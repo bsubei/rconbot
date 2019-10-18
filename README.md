@@ -19,7 +19,11 @@ See [the official website](https://joinsquad.com/) for more information.
 
 # Resources needed to develop this.
 - The RCON protocol used by Squad servers is based off of [Valve's RCON protocol](https://developer.valvesoftware.com/wiki/Source_RCON_Protocol), with minor modifications (for handling Unicode and multi-packet messages). See [SQUAD RCON](https://discord.gg/8tpbYZK) Discord group for more support.
-- The list of RCON allowed commands are found [in the wiki]()https://squad.gamepedia.com/Server_Administration.
+- The list of RCON allowed commands are found [in the wiki](https://squad.gamepedia.com/Server_Administration).
+
+# Python version and testing.
+I used Python 3.6.8 to write this, and used nose2 (the python3 version) to run the tests. Just use `nose2-3` in the root
+directory to run the unit tests.
 
 # License
 The license is GPLv3. Please see the LICENSE file.
