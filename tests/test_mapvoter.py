@@ -15,45 +15,45 @@
 # A testing class to test the MapVoter functionality.
 #
 
-import random
-import unittest
+import pytest
 from unittest import mock
 
 from mapvoter import mapvoter
 
-class TestMapVoter(unittest.TestCase):
+
+class TestMapVoter:
     """ TODO docstring """
 
-    def setUp(self):
-        """ The fixture set up function. """
-        self.voter = mapvoter.MapVoter()
+    @pytest.fixture
+    def voter(self):
+        """ The fixture function to return a mapvoter. """
+        return mapvoter.MapVoter()
 
-    def check_should_start_map_vote(self, time_map_started, time_now, expected_should_start):
-        self.voter.time_map_started = time_map_started
+    def check_should_start_map_vote(voter, time_map_started, time_now, expected_should_start):
+        voter.time_map_started = time_map_started
         with mock.patch('mapvoter.mapvoter.time.time') as mock_time:
             mock_time.return_value = time_now
-            self.assertEqual(expected_should_start, self.voter.should_start_map_vote())
+            assert expected_should_start == voter.should_start_map_vote()
 
-    def test_should_start_map_vote(self):
+    def test_should_start_map_vote(self, voter):
         """ Tests for should_start_map_vote. """
         # Case 1: On startup, a mapvoter should never want to start a map vote.
         TIME_NOW = 42.0
-        self.check_should_start_map_vote(TIME_NOW, TIME_NOW, False)
+        TestMapVoter.check_should_start_map_vote(
+            voter, TIME_NOW, TIME_NOW, False)
 
         # Case 2: After not enough time has elapsed, a mapvoter should not want to start a map vote.
-        self.check_should_start_map_vote(TIME_NOW, TIME_NOW + mapvoter.TIME_ELAPSED_BEFORE_STARTING_VOTE_S - 1.0, False)
+        TestMapVoter.check_should_start_map_vote(
+            voter, TIME_NOW, TIME_NOW + mapvoter.TIME_ELAPSED_BEFORE_STARTING_VOTE_S - 1.0, False)
 
         # Case 3: After enough time has elapsed, a mapvoter should want to start a map vote.
-        self.check_should_start_map_vote(TIME_NOW, TIME_NOW + mapvoter.TIME_ELAPSED_BEFORE_STARTING_VOTE_S + 1.0, True)
+        TestMapVoter.check_should_start_map_vote(
+            voter, TIME_NOW, TIME_NOW + mapvoter.TIME_ELAPSED_BEFORE_STARTING_VOTE_S + 1.0, True)
 
-    def test_reset_new_map(self):
+    def test_reset_new_map(self, voter):
         """ Tests for reset_new_map. """
         # Time elapsed should reset every time reset_new_map is called.
-        initial_time = self.voter.time_map_started
-        self.voter.reset_new_map()
-        later_time = self.voter.time_map_started
-        self.assertGreater(later_time, initial_time)
-
-
-if __name__ == '__main__':
-    unittest.main()
+        initial_time = voter.time_map_started
+        voter.reset_new_map()
+        later_time = voter.time_map_started
+        assert later_time > initial_time

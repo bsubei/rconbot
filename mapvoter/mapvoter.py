@@ -23,6 +23,7 @@ import time
 # Wait 1 minute before starting a map vote at the beginning of every map.
 TIME_ELAPSED_BEFORE_STARTING_VOTE_S = 60
 
+
 class MapVoter:
     """ TODO docstring """
 
