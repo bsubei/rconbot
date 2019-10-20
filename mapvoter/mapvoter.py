@@ -12,16 +12,16 @@
 # You should have received a copy of the GNU General Public License along with
 # this program. If not, see <http://www.gnu.org/licenses/>.
 #
-# A class that handles map voting mechanics.
-#
-# TODO fill this out
+# A class that handles map voting mechanics to be used by a Squad RCON client.
 #
 
 import collections
 import time
 import logging
+import random
 
-logger = logging.getLogger(__name__).addHandler(logging.NullHandler())
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
 
 
 # Wait 1 minute before starting a map vote at the beginning of every map.
@@ -34,83 +34,150 @@ START_VOTE_MESSAGE_TEMPLATE = (
 VOTE_RESULT_MESSAGE_TEMPLATE = 'The map with the most votes is: {} with {} votes!'
 
 # How long to listen to chat for vote casts in seconds.
-VOTING_TIME_DURATION_S = 30
+VOTING_TIME_DURATION_S = 30.0
 
 
 def get_rotation_from_filepath(map_rotation_filepath):
-    """ TODO """
-    # Fetches the map rotation from the given .txt file and returns a list of strings.
-    return []
+    """
+    Given the filepath to the map rotations file, return the list of map rotations. The file should list each map on a
+    separate line.
+    """
+    # Fetches the map rotation from the given .txt file and returns it as a
+    # list of strings (with newlines removed).
+    with open(map_rotation_filepath, 'r') as f:
+        return list(filter(None, [line.strip('\n') for line in f.readlines()]))
 
 
 def format_candidate_maps(candidate_maps):
-    """ TODO """
-    return '\n'.join(['{}) {}'.format(index, candidate) for index, candidate in enumerate(candidate_maps)])
+    """ Returns a formatted string of all the candidate maps to be displayed to players in chat. """
+    return '\n'.join(['{}) {}'.format(index, candidate)
+                      for index, candidate in enumerate(candidate_maps)])
+
+
+def get_highest_map_vote(candidate_maps, player_messages):
+    """
+    Given a list of candidate maps and player messages (dict of player_id -> list(messages)), return both the key
+    and count for the highest map vote.
+
+    NOTE: ties are broken by choosing the map first encountered (first voted on) in the given candidate maps list.
+
+    :param candidate_maps: list(str) The list of candidate maps that are being voted on.
+    :param player_messages: dict(str->list(str)) Contains the list of messages for each player (keyed by player_id).
+    :return: tuple(str, int) The name of the winning map and the vote count it received. None if there are no votes.
+    """
+    # This is a counter that keeps track of the count for each map (key).
+    map_votes = collections.Counter()
+
+    # Go over every message and count it towards a map if you can use it as an
+    # index. Otherwise, skip it.
+    for player_id, messages in player_messages.items():
+        if isinstance(messages, str):
+            raise ValueError(
+                'Given list of messages is just a string, not a list!')
+
+        # In order to avoid double-counting votes from a single voter, use their most recent valid vote and throw away
+        # the rest of their votes.
+        for message in reversed(messages):
+            try:
+                map_votes.update([candidate_maps[int(message)]])
+                # If we count this message as a vote, ignore the previous messages from this player (so we don't double
+                # count votes for this player).
+                break
+            except (ValueError, IndexError):
+                logger.warning(
+                    'Player with id {} entered invalid mapvote message. Skipping...'.format(player_id))
+
+    return map_votes.most_common(1)[0] if map_votes else None
 
 
 class MapVoter:
-    """ TODO docstring """
+    """
+    Instantiate this class and use it to send map voting instructions and listen to player responses (blocking).
+    Whenever a new map starts, call reset_new_map() and you can then poll should_start_map_vote() and then call
+    start_map_vote() when it's ready.
+    """
 
-    def __init__(self, rconbot, map_rotation_filepath):
+    def __init__(
+            self, rcon_client, map_rotation_filepath, number_of_candidates,
+            voting_time_duration_s=VOTING_TIME_DURATION_S):
+        """
+        The constructor for MapVoter.
+
+        :param rcon_client: RCONClient The handle to the rcon client.
+        :param map_rotation_filepath: str The filepath to the file containing the map rotation list.
+        :param number_of_candidates: int The number of candidate maps to vote on.
+        :param voting_time_duration_s: float The duration of time to wait for players to vote on maps in seconds.
+        """
         # This stores the map rotation (the pool of available maps to sample candidates from).
-        self.map_rotation_list = get_rotation_from_filepath(map_rotation_filepath)
+        self.map_rotation_list = get_rotation_from_filepath(
+            map_rotation_filepath)
 
-        # This stores the handle to the rconbot (so we can contact the squad server).
-        self.rconbot = rconbot
+        # This stores the handle to the rcon_client (so we can contact the squad server).
+        self.rcon_client = rcon_client
 
-        # Since we just started, pretend we reset to a new map.
+        # How many candidate maps to use when voting on maps.
+        self.number_of_candidates = number_of_candidates
+
+        # How many seconds to wait for players to vote on a map.
+        self.voting_time_duration_s = voting_time_duration_s
+
+        # Since we just started, pretend we reset to a new map. This sets self.time_map_started to time now.
         self.reset_new_map()
 
     def get_candidate_maps(self):
-        """ TODO """
-        return []
+        """ Returns a random sample of the given size from the map rotation list. """
+        return random.sample(self.map_rotation_list, self.number_of_candidates)
 
     def reset_new_map(self):
-        """ TODO """
+        """ This function should be called any time the map is reset, in order to reset time since map started. """
         # This stores the time when the latest map started (since the epoch).
         self.time_map_started = time.time()
+        self.has_voted_on_this_map = False
 
     def should_start_map_vote(self):
         """
-        If the time since the most recent map has started is greater than a threshold, then return True. Otherwise,
-        return False.
+        If the time since the most recent map has started is greater than a threshold, and we haven't voted on this map
+        before, then return True. Otherwise, return False.
         """
-        return (time.time() - self.time_map_started) >= TIME_ELAPSED_BEFORE_STARTING_VOTE_S
-
-    def get_highest_map_vote(candidate_maps, player_messages):
-        """ TODO """
-        # This is a counter that keeps track of the count for each map (key).
-        map_votes = collections.Counter()
-
-        for player_id, messages in player_messages:
-            # Go over every message and count it towards a map if you can use it as an index. Otherwise, skip it.
-            for message in messages:
-                try:
-                    map_votes.update(candidate_maps[int(message)])
-                except (ValueError, IndexError):
-                    logger.warn('Player with id {} entered invalid mapvote message.'.format(player_id))
-                    continue
-
-        return map_votes.most_common(1)[0]
+        return (
+            (time.time() - self.time_map_started) >= TIME_ELAPSED_BEFORE_STARTING_VOTE_S and
+            not self.has_voted_on_this_map)
 
     def start_map_vote(self):
-        """ TODO """
+        """ Starts a map vote by sending candidate maps message and listening to AllChat for a specified duration"""
+        # Mark the flag that we've voted on this map so we don't vote again.
+        self.has_voted_on_this_map = True
+
         # Get the list of map candidates (randomly chosen from the rotation).
         candidate_maps = self.get_candidate_maps()
         candidate_maps_formatted = format_candidate_maps(candidate_maps)
+        logger.info('Starting a new map vote! Candidate maps:\n{}'.format(
+            candidate_maps_formatted))
 
         # Send mapvote message (includes list of candidates).
-        start_vote_message = START_VOTE_MESSAGE_TEMPLATE.format(candidate_maps=candidate_maps_formatted)
-        self.rconbot.send_admin_message(start_vote_message)
+        start_vote_message = START_VOTE_MESSAGE_TEMPLATE.format(
+            candidate_maps=candidate_maps_formatted)
+        self.rcon_client.send_admin_message(start_vote_message)
 
         # Listen to the chat messages and collect them all as a dict of player_id -> list(str) where each player could
         # have posted a list of messages.
-        player_messages = self.rconbot.listen_to_allchat_for_duration(VOTING_TIME_DURATION_S)
+        # NOTE: the list of player messages is given in chronological order. Only the last cast vote is counted.
+        player_messages = self.rcon_client.listen_to_allchat_for_duration(
+            self.voting_time_duration_s)
 
         # Parse the chat messages into votes, and choose the map with the highest votes.
-        winner_map, vote_count = self.get_highest_map_vote(candidate_maps, player_messages)
-
-        # Send a message with the results, then set next map.
-        vote_result_message = VOTE_RESULT_MESSAGE_TEMPLATE.format(winner_map, vote_count)
-        self.rconbot.send_admin_message(vote_result_message)
-        self.rconbot.set_next_map(winner_map)
+        result = get_highest_map_vote(
+            candidate_maps, player_messages)
+        if result:
+            # If the voting was valid, send a message with the results, then set next map.
+            winner_map, vote_count = result
+            vote_result_message = VOTE_RESULT_MESSAGE_TEMPLATE.format(
+                winner_map, vote_count)
+            self.rcon_client.send_admin_message(vote_result_message)
+            logger.info(vote_result_message)
+            self.rcon_client.set_next_map(winner_map)
+        else:
+            # Else, send a message saying voting failed.
+            vote_failed_message = 'The map vote failed! Tell an admin to change the map if you want!'
+            self.rcon_client.send_admin_message(vote_failed_message)
+            logger.warning(vote_failed_message)
