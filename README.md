@@ -16,6 +16,7 @@ See [the official website](https://joinsquad.com/) for more information.
 - [ ] Automatically give whitelist to seeders/regulars who put in enough hours.
 - [ ] The ability for players to ping an admin on Discord if no admin is available on the server.
 - [ ] A trivia questions bot to keep seeding servers more interesting for players, possibly with rewards (whitelist for best players).
+- [ ] A polling bot so we can get direct feedback on polls/questions from in-game players (can also store player vote metadata, e.g. how many hours they've played on the server so we can see what regulars vs. randoms think).
 
 # Resources needed to develop this.
 - The RCON protocol used by Squad servers is based off of [Valve's RCON protocol](https://developer.valvesoftware.com/wiki/Source_RCON_Protocol), with minor modifications (for handling Unicode and multi-packet messages). See [SQUAD RCON](https://discord.gg/8tpbYZK) Discord group for more support.
