@@ -25,5 +25,7 @@ See [the official website](https://joinsquad.com/) for more information.
 I used Python 3.6.8 to write this, and used pytest (the python3 version) to run the tests. Just use `python3 -m pytest`
 in the root directory to run the unit tests. Auto-linting is done using `autopep8 --in-place <filename>`.
 
+TODO I need to figure out which packages I need to run this and any package setup.
+
 # License
 The license is GPLv3. Please see the LICENSE file.
