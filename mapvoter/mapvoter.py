@@ -22,6 +22,7 @@ import logging
 import re
 
 from pysrcds import rcon
+from squad_map_randomizer import squad_map_randomizer
 
 logger = logging.getLogger(__name__)
 # TODO is this messing with my logging?
@@ -42,6 +43,10 @@ DEFAULT_VOTING_TIME_DURATION_S = 30.0
 
 # The default port for RCON.
 DEFAULT_PORT = 21114
+
+# TODO(bsubei): pull this in as a Python package and use it.
+# The default URL to use to fetch the Squad map layers.
+DEFAULT_LAYERS_URL = 'https://raw.githubusercontent.com/bsubei/squad_map_layers/master/layers.json'
 
 # How long to sleep in between each "has the map changed" check (in seconds).
 SLEEP_BETWEEN_MAP_CHECKS_S = 5.0
@@ -249,10 +254,8 @@ def main():
 
             # If it's time to vote, start the vote!
             if mapvoter.should_start_map_vote():
-                # TODO major cleanup needed
-                from squad_map_randomizer import squad_map_randomizer
-                input_url = 'https://raw.githubusercontent.com/bsubei/squad_map_layers/master/layers.json'
-                layers = squad_map_randomizer.get_json_layers(None, input_url)
+                NO_FILEPATH = None
+                layers = squad_map_randomizer.get_json_layers(NO_FILEPATH, DEFAULT_LAYERS_URL)
                 candidate_maps = squad_map_randomizer.get_map_rotation(
                     layers, num_starting_skirmish_maps=1, num_repeating_pattern=1)
                 logger.info('Starting new map vote!')
