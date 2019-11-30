@@ -21,8 +21,8 @@ import time
 import logging
 import re
 
-from pysrcds import rcon
-from squad_map_randomizer import squad_map_randomizer
+from srcds import rcon
+import squad_map_randomizer
 
 logger = logging.getLogger(__name__)
 # TODO is this messing with my logging?

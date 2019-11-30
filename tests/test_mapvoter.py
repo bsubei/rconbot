@@ -28,6 +28,7 @@ FAKE_CANDIDATE_MAPS = ['vote me', 'no me pls', 'best map EU']
 FAKE_VOTE_DURATION_S = 42.0
 TIME_NOW = 69.0
 
+# TODO needs updating
 
 class TestMapVoter:
     """ Test class (uses pytest) for the MapVoter class. """

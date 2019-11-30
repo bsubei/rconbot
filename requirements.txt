@@ -1,0 +1,2 @@
+-e git+git://github.com/bsubei/pysrcds@v0.2.0#egg=pysrcds
+-e git+git://github.com/bsubei/squad_map_randomizer@v0.1.0#egg=squad_map_randomizer
