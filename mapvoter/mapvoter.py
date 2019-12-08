@@ -25,8 +25,6 @@ from srcds import rcon
 import squad_map_randomizer
 
 logger = logging.getLogger(__name__)
-# TODO is this messing with my logging?
-logger.addHandler(logging.NullHandler())
 
 
 # Wait 15 minutes before starting a map vote at the beginning of every map.
@@ -50,6 +48,16 @@ DEFAULT_LAYERS_URL = 'https://raw.githubusercontent.com/bsubei/squad_map_layers/
 
 # How long to sleep in between each "has the map changed" check (in seconds).
 SLEEP_BETWEEN_MAP_CHECKS_S = 5.0
+
+
+# TODO weird that so much state (getting chat then clearing it) is in here
+def is_player_asking_for_mapvote(player_messages):
+    # Fetch the player chat since we last checked.
+    for player_id, messages in player_messages.items():
+        for message in messages:
+            if '!mapvote' in message:
+                return True
+    return False
 
 
 def get_rotation_from_filepath(map_rotation_filepath):
@@ -138,12 +146,26 @@ class MapVoter:
         self.time_map_started = time.time()
         self.has_voted_on_this_map = False
 
-    def should_start_map_vote(self):
+    def get_duration_since_map_started(self):
+        """ Returns the duration of time (in seconds) since the map started. """
+        return time.time() - self.time_map_started
+
+    def get_duration_until_map_vote(self):
         """
-        If the time since the most recent map has started is greater than a threshold, and we haven't voted on this map
-        before, then return True. Otherwise, return False.
+        Return the duration (in seconds) until the map vote. A positive value means there is still time left until map
+        vote, and a zero or negative value means map vote should start or has started already.
         """
-        return (time.time() - self.time_map_started) >= self.voting_delay_s and not self.has_voted_on_this_map
+        return self.voting_delay_s - self.get_duration_since_map_started()
+
+    # TODO all this API needs cleanup
+    def should_start_map_vote(self, player_messages):
+        """
+        If the duration until map vote is zero or less, and we haven't voted on this map before, then return True.
+        Otherwise, return False.
+        """
+        return (self.get_duration_until_map_vote() <= 0 and
+                not self.has_voted_on_this_map and
+                is_player_asking_for_mapvote(player_messages))
 
     def listen_to_votes(self, sleep_duration_s, halftime_message=None):
         """
@@ -171,7 +193,7 @@ class MapVoter:
 
         # Get the list of map candidates (randomly chosen from the rotation).
         candidate_maps_formatted = format_candidate_maps(candidate_maps)
-        logger.info('Starting a new map vote! Candidate maps:\n{candidate_maps_formatted}')
+        logger.info(f'Starting a new map vote! Candidate maps:\n{candidate_maps_formatted}')
 
         # Send mapvote message (includes list of candidates).
         start_vote_message = START_VOTE_MESSAGE_TEMPLATE.format(
@@ -220,25 +242,47 @@ def parse_cli():
     """ Parses sys.argv (commandline args) and returns a parser with the arguments. """
     parser = argparse.ArgumentParser()
     parser.add_argument('--rcon-address', required=True, help='The address to the RCON server (IP or URL).')
-    parser.add_argument('--rcon-port', help=f'The port for the RCON server. Defaults to {DEFAULT_PORT}',
+    parser.add_argument('--rcon-port', type=int, help=f'The port for the RCON server. Defaults to {DEFAULT_PORT}.',
                         default=DEFAULT_PORT)
     parser.add_argument('--rcon-password', required=True, help='The password for the RCON server.')
-    parser.add_argument('--voting-delay',
-                        help=(f'How long to wait (in seconds) after map start beforing voting. Defaults to '
-                              '{DEFAULT_VOTING_DELAY_S}'), default=DEFAULT_VOTING_DELAY_S)
-    parser.add_argument('--voting-duration',
-                        help=f'How long to listen for votes in seconds. Defaults to {DEFAULT_VOTING_TIME_DURATION_S}',
+    parser.add_argument('--voting-delay', type=float,
+                        help=('How long to wait (in seconds) after map start before voting. Defaults to '
+                              f'{DEFAULT_VOTING_DELAY_S}.'), default=DEFAULT_VOTING_DELAY_S)
+    parser.add_argument('--voting-duration', type=float,
+                        help=f'How long to listen for votes in seconds. Defaults to {DEFAULT_VOTING_TIME_DURATION_S}.',
                         default=DEFAULT_VOTING_TIME_DURATION_S)
+    parser.add_argument('-v', '--verbose', dest='verbose', action='store_true', default=False,
+                        help='Verbose flag to indicate that DEBUG level output should be logged')
     return parser.parse_args()
+
+
+def setup_logger(verbose):
+    """ Sets up the logger based on the verbosity level. """
+    level = logging.DEBUG if verbose else logging.INFO
+
+    ch = logging.StreamHandler()
+    ch.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    ch.setLevel(level)
+
+    logger.setLevel(level)
+    logger.addHandler(ch)
 
 
 def main():
     """ Run the Map Voter script. """
+    print('Starting up mapvoter script!')
     args = parse_cli()
+
+    # Set up the logger.
+    setup_logger(args.verbose)
+
     try:
         # Set up the connection to RCON and initialize the mapvoter.
         conn = rcon.RconConnection(args.rcon_address, port=args.rcon_port, password=args.rcon_password)
         mapvoter = MapVoter(conn, args.voting_delay, args.voting_duration)
+
+        logger.info(f'Will start polling for new map every {SLEEP_BETWEEN_MAP_CHECKS_S} seconds and waiting to start a '
+                    'map vote...')
 
         # Get the current map at start so we know when the map changes.
         current_map = mapvoter.get_current_map()
@@ -247,18 +291,30 @@ def main():
         while True:
             # Check if we started a new map, and reset the mapvoter timer if it did.
             possibly_new_map = mapvoter.get_current_map()
-            logger.debug(f'current map: {current_map}, just checked map: {possibly_new_map}')
+            logger.debug(f'Current map: {current_map}, just checked map: {possibly_new_map}')
+
+            # Print out how long until or since map vote.
+            if mapvoter.get_duration_until_map_vote() > 0:
+                logger.debug(f'Time until map vote: {mapvoter.get_duration_until_map_vote()}')
+            else:
+                logger.debug(f'Time since map vote: {-mapvoter.get_duration_until_map_vote()}')
+
+            # If you detect a map change, reset the vote.
             if current_map != possibly_new_map:
                 current_map = possibly_new_map
                 mapvoter.reset_new_map()
+                logger.info('Map change detected! Resetting mapvoter!')
+
+            # TODO get most recent player messages
+            player_messages = mapvoter.squad_rcon_client.get_parsed_player_chat()
+            mapvoter.squad_rcon_client.clear_player_chat()
 
             # If it's time to vote, start the vote!
-            if mapvoter.should_start_map_vote():
+            if mapvoter.should_start_map_vote(player_messages):
                 NO_FILEPATH = None
                 layers = squad_map_randomizer.get_json_layers(NO_FILEPATH, DEFAULT_LAYERS_URL)
                 candidate_maps = squad_map_randomizer.get_map_rotation(
                     layers, num_starting_skirmish_maps=1, num_repeating_pattern=1)
-                logger.info('Starting new map vote!')
                 mapvoter.start_map_vote(squad_map_randomizer.get_layers(candidate_maps))
 
             time.sleep(SLEEP_BETWEEN_MAP_CHECKS_S)
