@@ -1,13 +1,11 @@
 # What is this?
-This repo currently contains a collection of tools and scripts to be used to remotely control (RCON) a Squad server.
+This repo contains a collection of tools and scripts to be used to remotely control (RCON) a Squad server (*currently just a mapvoter script*). The RCON client used is a modified version of [pysrcds](https://github.com/bsubei/pysrcds).
 
-# What is Squad (from wikipedia.org)?
-Squad is a tactical first-person shooter video game "set in the current modern day environment" being developed by Canadian studio Offworld Industries. It is set to be self-published through Steam and is a spiritual successor to the multi-award-winning Project Reality modification for Battlefield 2. The game features several playable factions, including various insurgent forces and national armies. Squad became available on Steam Early Access on December 15, 2015.
-
-See [the official website](https://joinsquad.com/) for more information.
+# What is Squad?
+See [the official website](https://joinsquad.com/) for information on Squad.
 
 # Planned feature list (not in any particular order)
-- [ ] Add map voting to a server. Shortly after a match starts, the bot (this tool) sends text chat to all users and offers options on maps to vote on. The map with the highest vote is set as the next map. In the event of the tool failing or not running, the original map rotation takes over (defined in a config file).
+- [X] Add map voting to a server. Users can start a mapvote in text chat, and the bot (this tool) sends text chat to all users and offers options on maps to vote on (voting happens in-game). The map with the highest vote is set as the next map. In the event of the tool failing or not running, the original map rotation takes over (defined in a config file).
 - [ ] Having multiple map rotations based on some event (e.g. when player count is low, switch to seeding rotation). This feature will require this bot to handle the map rotations entirely and set next map every time (ignoring the default map rotation config file).
 - [ ] A team shuffle command (optionally add the ability to vote for this).
 - [ ] A team swap command that swaps both teams completely (useful for competitive servers).
@@ -26,7 +24,7 @@ I used Python 3.6.8 to write this, and used pytest (the python3 version) to run 
 in the root directory to run the unit tests. Auto-linting is done using `autopep8 --in-place <filename>`.
 
 # Installation
-Run `pip3 install -r requirements.txt` to install the packages locally into the `src/` folder, then you can run the mapvoter script.
+Run `pip3 install -r requirements.txt` to install the packages locally into the `src/` folder, then you can run the mapvoter script. Example usage: `python3 mapvoter/mapvoter.py --rcon-address '123.456.789.123' --rcon-port 12345 --rcon-password myfancypass --voting-delay 900 --voting-duration 60 --verbose`.
 
 # License
 The license is GPLv3. Please see the LICENSE file.
