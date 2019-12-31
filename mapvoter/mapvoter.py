@@ -37,6 +37,9 @@ START_VOTE_MESSAGE_TEMPLATE = (
 # The string to be formatted and sent to the server when a map vote is over.
 VOTE_RESULT_MESSAGE_TEMPLATE = 'The map with the most votes is: {} with {} votes!'
 
+# The string to be formatted and sent to the server when a redo map vote option is chosen.
+VOTE_REDO_MESSAGE_TEMPLATE = 'The redo option had the most votes ({} votes)'
+
 # How long to listen to chat for vote casts in seconds.
 DEFAULT_VOTING_TIME_DURATION_S = 30.0
 
@@ -60,6 +63,9 @@ CLAN_TAG = '[FP]'
 
 # The list of recognized map vote commands.
 MAP_VOTE_COMMANDS = ['!mapvote', '!votemap', '!rtv']
+
+# The text to display for the last option in the map vote (runs the map vote again with random candidates).
+REDO_VOTE_OPTION = 'Run the vote again with random maps'
 
 
 def has_map_vote_command(message):
@@ -105,21 +111,23 @@ def get_map_candidates(map_rotation_filepath, map_layers_url, current_map):
             next_map_index = map_rotation.index(current_map) + 1
             rotation_length = len(map_rotation)
 
-            # Choose a random skirmish map plus the next N maps in the rotation as the candidates.
+            # Choose a random skirmish map plus the next N maps in the rotation as the candidates plus a redo option.
             random_skirmish = squad_map_randomizer.get_random_skirmish_layer(NO_FILEPATH, map_layers_url)
             candidates = [random_skirmish] + map_rotation[next_map_index:next_map_index + NUM_NEXT_MAPS_IN_ROTATION]
+
             # Wrap around the rotation list.
             if next_map_index + NUM_NEXT_MAPS_IN_ROTATION >= rotation_length:
                 candidates += map_rotation[:next_map_index + NUM_NEXT_MAPS_IN_ROTATION - rotation_length]
-            return candidates
+            # Don't forget to include the redo option if none of the options are preferred.
+            return candidates + [REDO_VOTE_OPTION]
         except ValueError:
             logger.error('Failed to find current map in rotation! Using random maps as candidates instead of rotation!')
 
-    # Otherwise, just use random maps as candidates.
+    # Otherwise, just use random maps as candidates (and a redo option).
     all_map_layers = squad_map_randomizer.get_json_layers(NO_FILEPATH, map_layers_url)
     rotation = squad_map_randomizer.get_map_rotation(
                 all_map_layers, num_starting_skirmish_maps=1, num_repeating_pattern=1)
-    return squad_map_randomizer.get_layers(rotation)
+    return squad_map_randomizer.get_layers(rotation) + [REDO_VOTE_OPTION]
 
 
 def format_candidate_maps(candidate_maps):
@@ -188,6 +196,9 @@ class MapVoter:
         # How many seconds to wait in between map votes.
         self.voting_cooldown_s = voting_cooldown_s
 
+        # Flag to indicate that a map vote should be redone (with random maps) as soon as possible.
+        self.redo_requested = False
+
         # The most recent player chat objects (dict of player id -> PlayerChat).
         self.recent_player_chat = {}
 
@@ -222,10 +233,12 @@ class MapVoter:
 
         If the map vote is available (enough time has elapsed since previous map vote), then a map vote
         should start if enough players have asked for it using MAP_VOTE_COMMANDS. A map vote should also start if any
-        clan member uses a map vote command at any point (no time limit).
+        clan member uses a map vote command at any point (no time limit). The redo flag is used to instantly restart
+        the map vote in case the previous map vote wanted a redo.
         """
-        return (self.get_duration_until_map_vote_available() <= 0 and
-                self.did_enough_players_ask_for_map_vote()) or self.did_one_clan_member_ask_for_map_vote()
+        return ((self.get_duration_until_map_vote_available() <= 0 and self.did_enough_players_ask_for_map_vote()) or
+                self.did_one_clan_member_ask_for_map_vote() or
+                self.redo_requested)
 
     def listen_to_votes(self, sleep_duration_s, halftime_message=None):
         """
@@ -273,15 +286,22 @@ class MapVoter:
         result = get_highest_map_vote(
             candidate_maps, self.recent_player_chat)
         if result:
-            # If the voting was valid, send a message with the results, then set next map.
             winner_map, vote_count = result
-            vote_result_message = VOTE_RESULT_MESSAGE_TEMPLATE.format(
-                winner_map, vote_count)
-            self.squad_rcon_client.exec_command(f'AdminBroadcast {vote_result_message}')
-            logger.info(vote_result_message)
-            self.squad_rcon_client.exec_command(f'AdminSetNextMap "{winner_map}"')
-            # Reset map vote so calling another vote is on cooldown.
-            self.reset_map_vote()
+            # If the voting was valid and was not a redo option, send a message with the results, then set next map.
+            if winner_map != REDO_VOTE_OPTION:
+                vote_result_message = VOTE_RESULT_MESSAGE_TEMPLATE.format(
+                    winner_map, vote_count)
+                self.squad_rcon_client.exec_command(f'AdminBroadcast {vote_result_message}')
+                logger.info(vote_result_message)
+                self.squad_rcon_client.exec_command(f'AdminSetNextMap "{winner_map}"')
+                # Reset map vote so calling another vote is on cooldown.
+                self.reset_map_vote()
+            # If the voting was valid but a redo option was chosen, run the map vote again (set redo_requested flag).
+            else:
+                vote_redo_message = VOTE_REDO_MESSAGE_TEMPLATE.format(vote_count)
+                self.squad_rcon_client.exec_command(f'AdminBroadcast {vote_redo_message}')
+                logger.info(vote_redo_message)
+                self.redo_requested = True
         else:
             # Else, send a message saying voting failed. We do not reset because the map vote failed.
             vote_failed_message = 'The map vote failed!'
@@ -340,7 +360,7 @@ def parse_cli():
                               'from the provided map layers JSON file.'))
     parser.add_argument('--map-layers-url', default=DEFAULT_LAYERS_URL,
                         help=('The URL to the map layers JSON file containing all map layers to use for the map vote '
-                              'choices.'))
+                              'choices if a map rotation is not provided/used.'))
     return parser.parse_args()
 
 
@@ -395,7 +415,7 @@ def main():
             # happening.
             if current_map == next_map:
                 random_map = random.choice(get_map_candidates(
-                                            args.map_rotation_filepath, args.map_layers_url, current_map)[1:])
+                                            args.map_rotation_filepath, args.map_layers_url, current_map)[1:-1])
                 logger.warning(f'Next map is same as current map! Setting to a random map: {random_map}')
                 mapvoter.squad_rcon_client.exec_command(f'AdminSetNextMap "{random_map}"')
 
@@ -405,8 +425,11 @@ def main():
 
             # If it's time to vote, start the vote!
             if mapvoter.should_start_map_vote():
-                mapvoter.start_map_vote(get_map_candidates(args.map_rotation_filepath, args.map_layers_url,
-                                                           current_map))
+                # In the special case that a redo is requested, omit the rotation filepath so we pick random maps. Also
+                # reset the redo flag.
+                rotation_filepath = None if mapvoter.redo_requested else args.map_rotation_filepath
+                mapvoter.redo_requested = False
+                mapvoter.start_map_vote(get_map_candidates(rotation_filepath, args.map_layers_url, current_map))
 
             time.sleep(SLEEP_BETWEEN_MAP_CHECKS_S)
 

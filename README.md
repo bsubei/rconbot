@@ -18,6 +18,12 @@ See [the official website](https://joinsquad.com/) for information on Squad.
 - [ ] A polling bot so we can get direct feedback on polls/questions from in-game players (can also store player vote metadata, e.g. how many hours they've played on the server so we can see what regulars vs. randoms think).
 - [ ] in-game chat mortar calculator. Player types origin and target coordinates in team chat, and gets the bearing and angle as an admin warning (only they can see it).
 
+# Map Voter current features:
+- Players with the specified clan tag can start a map vote at any time by typing a valid command in chat (e.g. `!mapvote`).
+- Players without the clan tag can *ask* for a map vote by typing in the same command. When enough players ask for it (default 5), a map vote is started *if the cooldown is over*.
+- If the map rotation file is provided, the candidate maps are the next four maps in the rotation.
+- Otherwise, a random set of maps is chosen based on the [squad\_map\_randomizer](https://github.com/bsubei/squad_map_randomizer) tool.
+
 # Resources needed to develop this.
 - The RCON protocol used by Squad servers is based off of [Valve's RCON protocol](https://developer.valvesoftware.com/wiki/Source_RCON_Protocol), with minor modifications (for handling Unicode and multi-packet messages). See [SQUAD RCON](https://discord.gg/8tpbYZK) Discord group for more support.
 - The list of RCON allowed commands are found [in the wiki](https://squad.gamepedia.com/Server_Administration).

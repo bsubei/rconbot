@@ -74,28 +74,28 @@ class TestMapVoter:
                 mock_get_rotation.return_value = [str(x) for x in range(
                     5)] + [VALID_CURRENT_MAP] + [str(x) for x in range(5, 10)]
                 assert mapvoter.get_map_candidates(VALID_ROTATION_FILEPATH, VALID_URL, VALID_CURRENT_MAP) == [
-                    SKIRMISH_LAYER, '5', '6', '7', '8']
+                    SKIRMISH_LAYER, '5', '6', '7', '8', mapvoter.REDO_VOTE_OPTION]
 
                 # Case 1b: provide all three arguments (map rotation filepath, layers URL, and current map). With
                 # current map being near the end of the rotation (to test for correct wrapping around the list).
                 mock_get_rotation.return_value = [str(x) for x in range(
                     8)] + [VALID_CURRENT_MAP] + [str(x) for x in range(8, 10)]
                 assert mapvoter.get_map_candidates(VALID_ROTATION_FILEPATH, VALID_URL, VALID_CURRENT_MAP) == [
-                    SKIRMISH_LAYER, '8', '9', '0', '1']
+                    SKIRMISH_LAYER, '8', '9', '0', '1', mapvoter.REDO_VOTE_OPTION]
 
                 # Case 1c: provide all three arguments (map rotation filepath, layers URL, and current map). With
                 # current map being in the end of the rotation.
                 mock_get_rotation.return_value = [
                     str(x) for x in range(10)] + [VALID_CURRENT_MAP]
                 assert mapvoter.get_map_candidates(VALID_ROTATION_FILEPATH, VALID_URL, VALID_CURRENT_MAP) == [
-                    SKIRMISH_LAYER, '0', '1', '2', '3']
+                    SKIRMISH_LAYER, '0', '1', '2', '3', mapvoter.REDO_VOTE_OPTION]
 
                 # Case 1d: provide all three arguments (map rotation filepath, layers URL, and current map). With
                 # current map being in the beginning of the rotation.
                 mock_get_rotation.return_value = [
                     VALID_CURRENT_MAP] + [str(x) for x in range(10)]
                 assert mapvoter.get_map_candidates(VALID_ROTATION_FILEPATH, VALID_URL, VALID_CURRENT_MAP) == [
-                    SKIRMISH_LAYER, '0', '1', '2', '3']
+                    SKIRMISH_LAYER, '0', '1', '2', '3', mapvoter.REDO_VOTE_OPTION]
 
         # Case 2: Provide an invalid layers URL (expect a failure).
         with mock.patch('mapvoter.mapvoter.get_rotation_from_filepath') as mock_get_rotation:
@@ -116,12 +116,13 @@ class TestMapVoter:
 
         # Case 4: No rotation filepath is provided, so it uses random layers from the JSON layers URL.
         NO_ROTATION_FILEPATH = None
-        EXPECTED_CANDIDATES = 'the expected rotation'
+        EXPECTED_CANDIDATES = ['the expected rotation']
         with mock.patch('squad_map_randomizer.get_json_layers'), mock.patch('squad_map_randomizer.get_map_rotation'):
             with mock.patch('squad_map_randomizer.get_layers') as mock_get_layers:
                 mock_get_layers.return_value = EXPECTED_CANDIDATES
                 assert mapvoter.get_map_candidates(
-                    NO_ROTATION_FILEPATH, VALID_URL, VALID_CURRENT_MAP) == EXPECTED_CANDIDATES
+                    NO_ROTATION_FILEPATH, VALID_URL, VALID_CURRENT_MAP) == EXPECTED_CANDIDATES + [
+                        mapvoter.REDO_VOTE_OPTION]
 
     def test_format_candidate_maps(self):
         """ Tests the format_candidate_maps function. """
@@ -250,11 +251,13 @@ class TestMapVoter:
                                                                      TIME_NOW + voter.time_since_map_vote)
 
     def check_should_start_map_vote(
-            voter, time_since_map_vote, time_now, is_vote_requested, is_clan_member_requested, expected_should_start):
+            voter, time_since_map_vote, time_now, is_vote_requested, is_clan_member_requested, redo_requested,
+            expected_should_start):
         """
         Helper to check whether a voter should start map vote based on the time of the latest vote and the current time.
         """
         voter.time_since_map_vote = time_since_map_vote
+        voter.redo_requested = redo_requested
         with mock.patch('mapvoter.mapvoter.time.time') as mock_time:
             mock_time.return_value = time_now
             with mock.patch.object(voter, 'did_enough_players_ask_for_map_vote') as mock_vote_requested, (
@@ -269,49 +272,71 @@ class TestMapVoter:
         VOTE_NOT_REQUESTED = False
         CLAN_MEMBER_REQUESTED = True
         CLAN_MEMBER_NOT_REQUESTED = False
+        REDO_REQUESTED = True
+        REDO_NOT_REQUESTED = False
 
         # Case 1: when map votes are requested, we can test the timer cooldown.
         # Case 1a: On startup, a mapvoter should be unable to start a map vote.
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED, False)
+            voter, TIME_NOW, TIME_NOW, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED, REDO_NOT_REQUESTED, False)
 
         # Case 1b: After not enough time has elapsed, a mapvoter should still be unable to start a map vote.
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED, False)
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
+            REDO_NOT_REQUESTED, False)
 
         # Case 1c: After enough time has elapsed, a mapvoter should be able to start a map vote.
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED, True)
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
+            REDO_NOT_REQUESTED, True)
 
         # Case 1d: if time has gone back (negative elapsed time), still return should not start map vote.
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW - 100000.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED, False)
+            voter, TIME_NOW, TIME_NOW - 100000.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED, REDO_NOT_REQUESTED, False)
 
         # Case 2: When map vote is never requested, never start a map vote no matter how much time passes.
         TestMapVoter.check_should_start_map_vote(
             voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
-            False)
+            REDO_NOT_REQUESTED, False)
         TestMapVoter.check_should_start_map_vote(
             voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
-            False)
+            REDO_NOT_REQUESTED, False)
 
         # Case 3: If map vote requested after enough time has elapsed, allow a map vote.
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s -
-            1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
-            False)
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
+            REDO_NOT_REQUESTED, False)
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED, True)
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
+            REDO_NOT_REQUESTED, True)
 
         # Case 4: If a clan member requested a vote, then allow a map vote regardless of anything else.
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_REQUESTED, True)
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_REQUESTED,
+            REDO_NOT_REQUESTED, True)
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_REQUESTED, CLAN_MEMBER_REQUESTED, True)
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_REQUESTED, CLAN_MEMBER_REQUESTED,
+            REDO_NOT_REQUESTED, True)
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_REQUESTED, True)
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_REQUESTED,
+            REDO_NOT_REQUESTED, True)
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_REQUESTED, CLAN_MEMBER_REQUESTED, True)
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_REQUESTED, CLAN_MEMBER_REQUESTED,
+            REDO_NOT_REQUESTED, True)
+
+        # Case 5: test in case of redo_requested is True.
+        TestMapVoter.check_should_start_map_vote(
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_REQUESTED, CLAN_MEMBER_REQUESTED,
+            REDO_REQUESTED, True)
+        TestMapVoter.check_should_start_map_vote(
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_REQUESTED,
+            REDO_REQUESTED, True)
+        TestMapVoter.check_should_start_map_vote(
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
+            REDO_REQUESTED, True)
+        TestMapVoter.check_should_start_map_vote(
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
+            REDO_REQUESTED, True)
 
     def test_start_map_vote_fails(self, voter):
         """ Tests for start_map_vote when it fails. """
@@ -336,18 +361,18 @@ class TestMapVoter:
                 'AdminBroadcast The map vote failed!')
 
         # Check that the next map was NOT set.
-        for args in voter.squad_rcon_client.set_next_map.call_args_list:
+        for args in voter.squad_rcon_client.exec_command.call_args_list:
             assert 'AdminSetNextMap' not in args[0][0]
+        assert voter.squad_rcon_client.exec_command.call_count == 4
 
     def test_start_map_vote_succeeds(self, voter):
         """ Tests for start_map_vote when it succeeds. """
-        # Start a map vote that succeeds we have to mock get_candidate_maps so we know what we voted for.
+        # Start a map vote that succeeds. We have to mock get_candidate_maps so we know what we voted for.
         PREDETERMINED_WINNER_MAP = 'foobar'
         PREDETERMINED_WINNER_COUNT = 200
         with mock.patch('mapvoter.mapvoter.get_highest_map_vote') as fake_get_highest_map_vote, (
                 mock.patch('mapvoter.mapvoter.time.sleep')):
-            fake_get_highest_map_vote.return_value = (
-                PREDETERMINED_WINNER_MAP, PREDETERMINED_WINNER_COUNT)
+            fake_get_highest_map_vote.return_value = (PREDETERMINED_WINNER_MAP, PREDETERMINED_WINNER_COUNT)
             voter.start_map_vote(FAKE_CANDIDATE_MAPS)
 
         # Check that the start vote message is sent using the squad_rcon_client.
@@ -367,9 +392,46 @@ class TestMapVoter:
             PREDETERMINED_WINNER_MAP,
             PREDETERMINED_WINNER_COUNT) in voter.squad_rcon_client.exec_command.call_args_list[3][0][0]
 
-        # Check that the next map was NOT set.
+        # Check that the next map was set.
         assert (f'AdminSetNextMap "{PREDETERMINED_WINNER_MAP}"'
                 == voter.squad_rcon_client.exec_command.call_args_list[4][0][0])
+
+        # Check that the redo_requested flag was NOT set.
+        assert not voter.redo_requested
+
+    def test_start_map_vote_redo(self, voter):
+        """ Tests for start_map_vote when the vote is for the redo option. """
+        # Start a map vote that succeeds. We have to mock get_candidate_maps so we know what we voted for.
+        PREDETERMINED_WINNER_MAP = mapvoter.REDO_VOTE_OPTION
+        PREDETERMINED_WINNER_COUNT = 200
+        with mock.patch('mapvoter.mapvoter.get_highest_map_vote') as fake_get_highest_map_vote, (
+                mock.patch('mapvoter.mapvoter.time.sleep')):
+            fake_get_highest_map_vote.return_value = (PREDETERMINED_WINNER_MAP, PREDETERMINED_WINNER_COUNT)
+            voter.start_map_vote(FAKE_CANDIDATE_MAPS)
+
+        # Check that the start vote message is sent using the squad_rcon_client.
+        assert (mapvoter.START_VOTE_MESSAGE_TEMPLATE.format(
+            candidate_maps=mapvoter.format_candidate_maps(FAKE_CANDIDATE_MAPS)) in
+            voter.squad_rcon_client.exec_command.call_args_list[0][0][0])
+
+        # Check that the halftime and finish messages are sent.
+        assert (mapvoter.START_VOTE_MESSAGE_TEMPLATE.format(
+            candidate_maps=mapvoter.format_candidate_maps(FAKE_CANDIDATE_MAPS)) in
+            voter.squad_rcon_client.exec_command.call_args_list[1][0][0])
+        assert (voter.squad_rcon_client.exec_command.call_args_list[2][0][0] ==
+                'AdminBroadcast Voting is over!')
+
+        # Check that the redo vote message is sent using the squad_rcon_client.
+        assert mapvoter.VOTE_REDO_MESSAGE_TEMPLATE.format(
+            PREDETERMINED_WINNER_COUNT) in voter.squad_rcon_client.exec_command.call_args_list[3][0][0]
+
+        # Check that the next map was NOT set.
+        assert voter.squad_rcon_client.exec_command.call_count == 4
+        for args in voter.squad_rcon_client.exec_command.call_args_list:
+            assert 'AdminSetNextMap' not in args[0][0]
+
+        # Check that the redo_requested flag was set.
+        assert voter.redo_requested
 
     def test_did_enough_players_ask_for_map_vote(self, voter):
         """ Tests for did_enough_players_ask_for_map_vote. """
