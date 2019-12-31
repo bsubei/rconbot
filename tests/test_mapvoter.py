@@ -251,13 +251,11 @@ class TestMapVoter:
                                                                      TIME_NOW + voter.time_since_map_vote)
 
     def check_should_start_map_vote(
-            voter, time_since_map_vote, time_now, is_vote_requested, is_clan_member_requested, redo_requested,
-            expected_should_start):
+            voter, time_since_map_vote, time_now, is_vote_requested, is_clan_member_requested, expected_should_start):
         """
         Helper to check whether a voter should start map vote based on the time of the latest vote and the current time.
         """
         voter.time_since_map_vote = time_since_map_vote
-        voter.redo_requested = redo_requested
         with mock.patch('mapvoter.mapvoter.time.time') as mock_time:
             mock_time.return_value = time_now
             with mock.patch.object(voter, 'did_enough_players_ask_for_map_vote') as mock_vote_requested, (
@@ -272,71 +270,55 @@ class TestMapVoter:
         VOTE_NOT_REQUESTED = False
         CLAN_MEMBER_REQUESTED = True
         CLAN_MEMBER_NOT_REQUESTED = False
-        REDO_REQUESTED = True
-        REDO_NOT_REQUESTED = False
 
         # Case 1: when map votes are requested, we can test the timer cooldown.
         # Case 1a: On startup, a mapvoter should be unable to start a map vote.
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED, REDO_NOT_REQUESTED, False)
+            voter, TIME_NOW, TIME_NOW, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED, False)
 
         # Case 1b: After not enough time has elapsed, a mapvoter should still be unable to start a map vote.
         TestMapVoter.check_should_start_map_vote(
             voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
-            REDO_NOT_REQUESTED, False)
+            False)
 
         # Case 1c: After enough time has elapsed, a mapvoter should be able to start a map vote.
         TestMapVoter.check_should_start_map_vote(
             voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
-            REDO_NOT_REQUESTED, True)
+            True)
 
         # Case 1d: if time has gone back (negative elapsed time), still return should not start map vote.
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW - 100000.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED, REDO_NOT_REQUESTED, False)
+            voter, TIME_NOW, TIME_NOW - 100000.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED, False)
 
         # Case 2: When map vote is never requested, never start a map vote no matter how much time passes.
         TestMapVoter.check_should_start_map_vote(
             voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
-            REDO_NOT_REQUESTED, False)
+            False)
         TestMapVoter.check_should_start_map_vote(
             voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
-            REDO_NOT_REQUESTED, False)
+            False)
 
         # Case 3: If map vote requested after enough time has elapsed, allow a map vote.
         TestMapVoter.check_should_start_map_vote(
             voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
-            REDO_NOT_REQUESTED, False)
+            False)
         TestMapVoter.check_should_start_map_vote(
             voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
-            REDO_NOT_REQUESTED, True)
+            True)
 
         # Case 4: If a clan member requested a vote, then allow a map vote regardless of anything else.
         TestMapVoter.check_should_start_map_vote(
             voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_REQUESTED,
-            REDO_NOT_REQUESTED, True)
+            True)
         TestMapVoter.check_should_start_map_vote(
             voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_REQUESTED, CLAN_MEMBER_REQUESTED,
-            REDO_NOT_REQUESTED, True)
+            True)
         TestMapVoter.check_should_start_map_vote(
             voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_REQUESTED,
-            REDO_NOT_REQUESTED, True)
+            True)
         TestMapVoter.check_should_start_map_vote(
             voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_REQUESTED, CLAN_MEMBER_REQUESTED,
-            REDO_NOT_REQUESTED, True)
-
-        # Case 5: test in case of redo_requested is True.
-        TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_REQUESTED, CLAN_MEMBER_REQUESTED,
-            REDO_REQUESTED, True)
-        TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_REQUESTED,
-            REDO_REQUESTED, True)
-        TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
-            REDO_REQUESTED, True)
-        TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
-            REDO_REQUESTED, True)
+            True)
 
     def test_start_map_vote_fails(self, voter):
         """ Tests for start_map_vote when it fails. """

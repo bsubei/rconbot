@@ -38,7 +38,7 @@ START_VOTE_MESSAGE_TEMPLATE = (
 VOTE_RESULT_MESSAGE_TEMPLATE = 'The map with the most votes is: {} with {} votes!'
 
 # The string to be formatted and sent to the server when a redo map vote option is chosen.
-VOTE_REDO_MESSAGE_TEMPLATE = 'The redo option had the most votes ({} votes)'
+VOTE_REDO_MESSAGE_TEMPLATE = 'The none of the above option had the most votes ({} votes). !rtv to restart map vote.'
 
 # How long to listen to chat for vote casts in seconds.
 DEFAULT_VOTING_TIME_DURATION_S = 30.0
@@ -65,7 +65,7 @@ CLAN_TAG = '[FP]'
 MAP_VOTE_COMMANDS = ['!mapvote', '!votemap', '!rtv']
 
 # The text to display for the last option in the map vote (runs the map vote again with random candidates).
-REDO_VOTE_OPTION = 'Run the vote again with random maps'
+REDO_VOTE_OPTION = 'None of the above (do nothing)'
 
 
 def has_map_vote_command(message):
@@ -233,12 +233,10 @@ class MapVoter:
 
         If the map vote is available (enough time has elapsed since previous map vote), then a map vote
         should start if enough players have asked for it using MAP_VOTE_COMMANDS. A map vote should also start if any
-        clan member uses a map vote command at any point (no time limit). The redo flag is used to instantly restart
-        the map vote in case the previous map vote wanted a redo.
+        clan member uses a map vote command at any point (no time limit).
         """
-        return ((self.get_duration_until_map_vote_available() <= 0 and self.did_enough_players_ask_for_map_vote()) or
-                self.did_one_clan_member_ask_for_map_vote() or
-                self.redo_requested)
+        return (self.did_one_clan_member_ask_for_map_vote() or
+                (self.get_duration_until_map_vote_available() <= 0 and self.did_enough_players_ask_for_map_vote()))
 
     def listen_to_votes(self, sleep_duration_s, halftime_message=None):
         """
