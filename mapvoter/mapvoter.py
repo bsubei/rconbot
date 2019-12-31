@@ -28,8 +28,8 @@ import squad_map_randomizer
 logger = logging.getLogger(__name__)
 
 
-# Wait 15 minutes before starting a map vote at the beginning of every map.
-DEFAULT_VOTING_DELAY_S = 60 * 15
+# Wait this long in between map votes.
+DEFAULT_VOTING_COOLDOWN_S = 60 * 30
 
 # The string to be formatted and sent to the server when a map vote starts.
 START_VOTE_MESSAGE_TEMPLATE = (
@@ -52,11 +52,19 @@ SLEEP_BETWEEN_MAP_CHECKS_S = 5.0
 # How many of the next maps in the current rotation to choose as candidates for the map vote.
 NUM_NEXT_MAPS_IN_ROTATION = 4
 
-# The fraction of plyaers that request a map vote before a map vote is allowed.
-FRACTION_OF_PLAYERS_REQUESTING_MAPVOTE_THRESHOLD = 0.2
+# The minimum number of players that request a map vote before a map vote is allowed.
+NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD = 5
 
 # The prefixed clan tag to use for clan players to force a map vote.
 CLAN_TAG = '[FP]'
+
+# The list of recognized map vote commands.
+MAP_VOTE_COMMANDS = ['!mapvote', '!votemap', '!rtv']
+
+
+def has_map_vote_command(message):
+    """ Helper that returns True if the message contains any of the map vote commands and False otherwise. """
+    return any(1 for command in MAP_VOTE_COMMANDS if command in message)
 
 
 def get_rotation_from_filepath(map_rotation_filepath):
@@ -164,7 +172,7 @@ class MapVoter:
     """
 
     def __init__(self, squad_rcon_client,
-                 voting_delay_s=DEFAULT_VOTING_DELAY_S, voting_time_duration_s=DEFAULT_VOTING_TIME_DURATION_S):
+                 voting_cooldown_s=DEFAULT_VOTING_COOLDOWN_S, voting_time_duration_s=DEFAULT_VOTING_TIME_DURATION_S):
         """
         The constructor for MapVoter.
 
@@ -177,8 +185,8 @@ class MapVoter:
         # How many seconds to wait for players to vote on a map.
         self.voting_time_duration_s = voting_time_duration_s
 
-        # How many seconds to wait after map start to vote on a new map.
-        self.voting_delay_s = voting_delay_s
+        # How many seconds to wait in between map votes.
+        self.voting_cooldown_s = voting_cooldown_s
 
         # The most recent player chat objects (dict of player id -> PlayerChat).
         self.recent_player_chat = {}
@@ -188,8 +196,7 @@ class MapVoter:
 
     def reset_map_vote(self):
         """
-        This function should be called any time the map is reset or a map vote succeeded, in order to reset
-        the map vote timer.
+        This function should be called any time a map vote succeeded, in order to reset the map vote cooldown.
         """
         # This stores the time when the latest map vote succeeded (since the epoch).
         self.time_since_map_vote = time.time()
@@ -207,15 +214,15 @@ class MapVoter:
         remaining until map vote can be called, and a zero or negative value means a map vote can start or has started
         already.
         """
-        return self.voting_delay_s - self.get_duration_since_map_vote()
+        return self.voting_cooldown_s - self.get_duration_since_map_vote()
 
     def should_start_map_vote(self):
         """
         Returns True if the map vote should start, and False otherwise.
 
-        If the map vote is available (enough time has elapsed since map change or previous map vote), then a map vote
-        should start if enough players have asked for it using "!mapvote". A map vote should also start if any clan
-        member uses the "!mapvote" command at any point (no time limit).
+        If the map vote is available (enough time has elapsed since previous map vote), then a map vote
+        should start if enough players have asked for it using MAP_VOTE_COMMANDS. A map vote should also start if any
+        clan member uses a map vote command at any point (no time limit).
         """
         return (self.get_duration_until_map_vote_available() <= 0 and
                 self.did_enough_players_ask_for_map_vote()) or self.did_one_clan_member_ask_for_map_vote()
@@ -285,19 +292,21 @@ class MapVoter:
         """
         Returns True if enough players (above threshold) have recently requested a mapvote, and returns False otherwise.
         """
+        previous_map_vote_requests = len(self.players_requesting_map_vote)
         # Check if any of the recent player messages had the map vote command in them.
         for player_id, player_chat in self.recent_player_chat.items():
             for message in player_chat.messages:
-                if '!mapvote' in message:
+                if has_map_vote_command(message):
                     self.players_requesting_map_vote.add(player_id)
-        # Tally up the counts of who wants a map vote and the total number of players.
-        num_players = len(self.squad_rcon_client.get_all_player_ids())
+        # Tally up the counts of who wants a map vote.
         map_vote_requests = len(self.players_requesting_map_vote)
-
-        if num_players <= 0:
-            logger.info('Number of players is zero! Cannot determine fraction of players requesting map vote!')
-            return False
-        return (map_vote_requests / num_players) > FRACTION_OF_PLAYERS_REQUESTING_MAPVOTE_THRESHOLD
+        num_asks_remaining = NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD - map_vote_requests
+        enough_asked = num_asks_remaining <= 0
+        # Send a broadcast message if new requests came in but more are needed.
+        if not enough_asked and map_vote_requests != previous_map_vote_requests:
+            self.squad_rcon_client.exec_command(
+                f'AdminBroadcast {num_asks_remaining} more requests needed to start a map vote.')
+        return enough_asked
 
     def did_one_clan_member_ask_for_map_vote(self):
         """
@@ -305,7 +314,7 @@ class MapVoter:
         """
         for player_id, player_chat in self.recent_player_chat.items():
             for message in player_chat.messages:
-                if '!mapvote' in message and CLAN_TAG in player_chat.player_name:
+                if has_map_vote_command(message) and CLAN_TAG in player_chat.player_name:
                     return True
         return False
 
@@ -317,9 +326,9 @@ def parse_cli():
     parser.add_argument('--rcon-port', type=int, help=f'The port for the RCON server. Defaults to {DEFAULT_PORT}.',
                         default=DEFAULT_PORT)
     parser.add_argument('--rcon-password', required=True, help='The password for the RCON server.')
-    parser.add_argument('--voting-delay', type=float,
-                        help=('How long to wait (in seconds) after map start before voting. Defaults to '
-                              f'{DEFAULT_VOTING_DELAY_S}.'), default=DEFAULT_VOTING_DELAY_S)
+    parser.add_argument('--voting-cooldown', type=float,
+                        help=('How long to wait (in seconds) in between map votes. Defaults to '
+                              f'{DEFAULT_VOTING_COOLDOWN_S}.'), default=DEFAULT_VOTING_COOLDOWN_S)
     parser.add_argument('--voting-duration', type=float,
                         help=f'How long to listen for votes in seconds. Defaults to {DEFAULT_VOTING_TIME_DURATION_S}.',
                         default=DEFAULT_VOTING_TIME_DURATION_S)
@@ -358,7 +367,7 @@ def main():
     # Set up the connection to RCON using a managed context (socket is closed automatically once we leave this context).
     with rcon.get_managed_rcon_connection(args.rcon_address, port=args.rcon_port, password=args.rcon_password) as conn:
         # Initialize the mapvoter.
-        mapvoter = MapVoter(conn, args.voting_delay, args.voting_duration)
+        mapvoter = MapVoter(conn, args.voting_cooldown, args.voting_duration)
 
         logger.info(f'Will start checking for new map every {SLEEP_BETWEEN_MAP_CHECKS_S} seconds and waiting to start '
                     'a map vote...')
@@ -369,8 +378,8 @@ def main():
         # Spin until we're done, but do it slowly.
         while True:
             # Check if we started a new map, and reset the mapvoter timer if it did.
-            possibly_new_map, next_map = mapvoter.squad_rcon_client.get_current_and_next_map()
-            logger.debug(f'Current map: {current_map}, just checked map: {possibly_new_map}, next map: {next_map}')
+            current_map, next_map = mapvoter.squad_rcon_client.get_current_and_next_map()
+            logger.debug(f'Current map: {current_map}, next map: {next_map}')
 
             # Print out how long until or since map vote.
             if mapvoter.get_duration_until_map_vote_available() > 0:
@@ -380,12 +389,6 @@ def main():
 
             # Print out how many players have asked for a map vote so far.
             logger.debug(f'Number of players asking for map vote: {len(mapvoter.players_requesting_map_vote)}.')
-
-            # If you detect a map change, reset the vote.
-            if current_map != possibly_new_map:
-                current_map = possibly_new_map
-                mapvoter.reset_map_vote()
-                logger.info('Map change detected! Resetting mapvoter!')
 
             # If the next map is the same as current map, set a random map from the rotation as next map.
             # NOTE(bsubei): the vote could force two consecutive maps to be the same. This will prevent that from

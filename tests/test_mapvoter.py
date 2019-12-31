@@ -16,6 +16,7 @@
 #
 
 import pytest
+import random
 from unittest import mock
 
 from mapvoter import mapvoter
@@ -26,7 +27,7 @@ FAKE_ROTATION = ['not a real', 'rotation', 'list']
 NUMBER_OF_CANDIDATES = 2
 FAKE_CANDIDATE_MAPS = ['vote me', 'no me pls', 'best map EU']
 FAKE_VOTE_DURATION_S = 42.0
-FAKE_VOTE_DELAY_S = 77.0
+FAKE_VOTE_COOLDOWN_S = 77.0
 TIME_NOW = 69.0
 
 
@@ -44,7 +45,7 @@ class TestMapVoter:
         with mock.patch('mapvoter.mapvoter.time.time') as fake_time:
             fake_time.return_value = TIME_NOW
             return mapvoter.MapVoter(
-                TestMapVoter.MOCK_RCON_CLIENT, FAKE_VOTE_DELAY_S, FAKE_VOTE_DURATION_S)
+                TestMapVoter.MOCK_RCON_CLIENT, FAKE_VOTE_COOLDOWN_S, FAKE_VOTE_DURATION_S)
 
     def test_get_rotation_from_filepath(self, tmp_path):
         """ Tests the get_rotation_from_filepath function. """
@@ -212,7 +213,7 @@ class TestMapVoter:
         # Check that each member was assigned as we expected from the fixture (includes mocked time).
         assert voter.squad_rcon_client == TestMapVoter.MOCK_RCON_CLIENT
         assert voter.voting_time_duration_s == FAKE_VOTE_DURATION_S
-        assert voter.voting_delay_s == FAKE_VOTE_DELAY_S
+        assert voter.voting_cooldown_s == FAKE_VOTE_COOLDOWN_S
         assert len(voter.recent_player_chat) == 0
         assert voter.time_since_map_vote == TIME_NOW
         assert len(voter.players_requesting_map_vote) == 0
@@ -245,7 +246,7 @@ class TestMapVoter:
         TIME_NOW = 800.0
         with mock.patch('mapvoter.mapvoter.time.time') as fake_time:
             fake_time.return_value = TIME_NOW
-            assert voter.get_duration_until_map_vote_available() == (FAKE_VOTE_DELAY_S -
+            assert voter.get_duration_until_map_vote_available() == (FAKE_VOTE_COOLDOWN_S -
                                                                      TIME_NOW + voter.time_since_map_vote)
 
     def check_should_start_map_vote(
@@ -276,11 +277,11 @@ class TestMapVoter:
 
         # Case 1b: After not enough time has elapsed, a mapvoter should still be unable to start a map vote.
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_delay_s - 1.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED, False)
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED, False)
 
         # Case 1c: After enough time has elapsed, a mapvoter should be able to start a map vote.
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_delay_s + 1.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED, True)
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED, True)
 
         # Case 1d: if time has gone back (negative elapsed time), still return should not start map vote.
         TestMapVoter.check_should_start_map_vote(
@@ -288,28 +289,29 @@ class TestMapVoter:
 
         # Case 2: When map vote is never requested, never start a map vote no matter how much time passes.
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_delay_s + 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
             False)
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_delay_s - 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
             False)
 
         # Case 3: If map vote requested after enough time has elapsed, allow a map vote.
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_delay_s - 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s -
+            1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
             False)
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_delay_s + 1.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED, True)
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED, True)
 
         # Case 4: If a clan member requested a vote, then allow a map vote regardless of anything else.
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_delay_s - 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_REQUESTED, True)
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_REQUESTED, True)
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_delay_s - 1.0, VOTE_REQUESTED, CLAN_MEMBER_REQUESTED, True)
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_REQUESTED, CLAN_MEMBER_REQUESTED, True)
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_delay_s + 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_REQUESTED, True)
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_REQUESTED, True)
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_delay_s + 1.0, VOTE_REQUESTED, CLAN_MEMBER_REQUESTED, True)
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_REQUESTED, CLAN_MEMBER_REQUESTED, True)
 
     def test_start_map_vote_fails(self, voter):
         """ Tests for start_map_vote when it fails. """
@@ -320,12 +322,12 @@ class TestMapVoter:
         # Check that the start vote message is sent using the squad_rcon_client.
         assert (mapvoter.START_VOTE_MESSAGE_TEMPLATE.format(
             candidate_maps=mapvoter.format_candidate_maps(FAKE_CANDIDATE_MAPS)) in
-                voter.squad_rcon_client.exec_command.call_args_list[0][0][0])
+            voter.squad_rcon_client.exec_command.call_args_list[0][0][0])
 
         # Check that the halftime and finish messages are sent.
         assert (mapvoter.START_VOTE_MESSAGE_TEMPLATE.format(
             candidate_maps=mapvoter.format_candidate_maps(FAKE_CANDIDATE_MAPS)) in
-                voter.squad_rcon_client.exec_command.call_args_list[1][0][0])
+            voter.squad_rcon_client.exec_command.call_args_list[1][0][0])
         assert (voter.squad_rcon_client.exec_command.call_args_list[2][0][0] ==
                 'AdminBroadcast Voting is over!')
 
@@ -351,12 +353,12 @@ class TestMapVoter:
         # Check that the start vote message is sent using the squad_rcon_client.
         assert (mapvoter.START_VOTE_MESSAGE_TEMPLATE.format(
             candidate_maps=mapvoter.format_candidate_maps(FAKE_CANDIDATE_MAPS)) in
-                voter.squad_rcon_client.exec_command.call_args_list[0][0][0])
+            voter.squad_rcon_client.exec_command.call_args_list[0][0][0])
 
         # Check that the halftime and finish messages are sent.
         assert (mapvoter.START_VOTE_MESSAGE_TEMPLATE.format(
             candidate_maps=mapvoter.format_candidate_maps(FAKE_CANDIDATE_MAPS)) in
-                voter.squad_rcon_client.exec_command.call_args_list[1][0][0])
+            voter.squad_rcon_client.exec_command.call_args_list[1][0][0])
         assert (voter.squad_rcon_client.exec_command.call_args_list[2][0][0] ==
                 'AdminBroadcast Voting is over!')
 
@@ -380,63 +382,87 @@ class TestMapVoter:
 
         # Case 1: if no one asked, then expect False.
         assert not voter.did_enough_players_ask_for_map_vote()
+        # We also check that no broadcast message was sent since no one asked for a map vote.
+        assert voter.squad_rcon_client.exec_command.call_count == 0
 
-        # Case 2: if only one person is on the server and they ask, expect True.
-        with mock.patch.object(voter.squad_rcon_client, 'get_all_player_ids') as mock_get_player_ids:
-            mock_get_player_ids.return_value = ['id1']
-            voter.recent_player_chat = {'id1': player_chat_class(['!mapvote'])}
-            assert voter.did_enough_players_ask_for_map_vote()
-
-        # NOTE(bsubei): we must reset to remove the previous map vote requests and chat.
-        voter.reset_map_vote()
-        voter.recent_player_chat = {}
-        # Case 3: if only one person is on the server and they don't ask, expect False.
-        with mock.patch.object(voter.squad_rcon_client, 'get_all_player_ids') as mock_get_player_ids:
-            mock_get_player_ids.return_value = ['id1']
-            assert not voter.did_enough_players_ask_for_map_vote()
-
-        # Case 4: if many players are on the server and none of them ask, expect False.
-        with mock.patch.object(voter.squad_rcon_client, 'get_all_player_ids') as mock_get_player_ids:
-            mock_get_player_ids.return_value = [f'id{i}' for i in range(50)]
-            assert not voter.did_enough_players_ask_for_map_vote()
-
-        # Case 5: if many players are on the server and only one in five ask (just below the threshold), expect False.
-        with mock.patch.object(voter.squad_rcon_client, 'get_all_player_ids') as mock_get_player_ids:
-            mock_get_player_ids.return_value = [f'id{i}' for i in range(50)]
-            voter.recent_player_chat = {f'id{i}': player_chat_class(['!mapvote']) for i in range(0, 50, 5)}
-            assert not voter.did_enough_players_ask_for_map_vote()
+        # Case 2: if only one person asks, expect False.
+        voter.recent_player_chat = {'id1': player_chat_class(['!mapvote'])}
+        assert not voter.did_enough_players_ask_for_map_vote()
+        # Since one person asked, we check that a broadcast message was sent.
+        assert voter.squad_rcon_client.exec_command.call_count == 1
+        assert (f'AdminBroadcast {mapvoter.NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD - 1} more requests' in
+                voter.squad_rcon_client.exec_command.call_args_list[0][0][0])
 
         # NOTE(bsubei): we must reset to remove the previous map vote requests and chat.
         voter.reset_map_vote()
         voter.recent_player_chat = {}
 
-        # Case 5: if many players are on the server and more than one in five ask (above the threshold), expect True.
-        with mock.patch.object(voter.squad_rcon_client, 'get_all_player_ids') as mock_get_player_ids:
-            mock_get_player_ids.return_value = [f'id{i}' for i in range(50)]
-            voter.recent_player_chat = {f'id{i}': player_chat_class(['!mapvote']) for i in range(0, 50, 4)}
-            assert voter.did_enough_players_ask_for_map_vote()
+        # Case 3: if not enough players ask (just below the threshold), expect False.
+        voter.recent_player_chat = {
+            f'id{i}': player_chat_class(['!mapvote']) for i in range(
+                0, mapvoter.NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD - 1)}
+        assert not voter.did_enough_players_ask_for_map_vote()
+
+        # NOTE(bsubei): we must reset to remove the previous map vote requests and chat.
+        voter.reset_map_vote()
+        voter.recent_player_chat = {}
+
+        # Case 4: if exactly enough players ask, expect True
+        voter.recent_player_chat = {
+            f'id{i}': player_chat_class(['!mapvote']) for i in range(
+                0, mapvoter.NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD)}
+        assert voter.did_enough_players_ask_for_map_vote()
+
+        # NOTE(bsubei): we must reset to remove the previous map vote requests and chat.
+        voter.reset_map_vote()
+        voter.recent_player_chat = {}
+
+        # Case 5: if more than enough players ask, expect True
+        voter.recent_player_chat = {
+            f'id{i}': player_chat_class(['!mapvote']) for i in range(
+                0, mapvoter.NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD + 1)}
+        assert voter.did_enough_players_ask_for_map_vote()
 
         # NOTE(bsubei): we must reset to remove the previous map vote requests and chat.
         voter.reset_map_vote()
         voter.recent_player_chat = {}
 
         # Case 6: if some players have duplicate map votes, don't count them.
-        with mock.patch.object(voter.squad_rcon_client, 'get_all_player_ids') as mock_get_player_ids:
-            mock_get_player_ids.return_value = [f'id{i}' for i in range(50)]
-            voter.recent_player_chat = {
-                f'id{i}': player_chat_class(['!mapvote', f'{i} some chat', 'another !mapvote'])
-                for i in range(0, 50, 5)}
-            # Since the duplicate map votes are not counted, there aren't enough map vote requests.
-            assert not voter.did_enough_players_ask_for_map_vote()
+        voter.recent_player_chat = {
+            f'id{i}': player_chat_class(['!mapvote', f'{i} some chat', 'another !mapvote'])
+            for i in range(0, mapvoter.NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD - 1)}
+        # Since the duplicate map votes are not counted, there aren't enough map vote requests.
+        assert not voter.did_enough_players_ask_for_map_vote()
+        exec_call_count = voter.squad_rcon_client.exec_command.call_count
 
-        # Case 7: when we intentionally don't reset the map vote, the previous map votes count. One more new map vote
+        # Case 7: when we intentionally don't reset the map vote, the previous map votes count. Another duplicate map
+        # vote still does not count.
+        # This player asked previously, so adding their map vote request should not be counted.
+        voter.recent_player_chat = {f'id0': player_chat_class(
+            ['I have decided vote twice', '!mapvote'])}
+        assert not voter.did_enough_players_ask_for_map_vote()
+        # Also check that no broadcast is sent for a duplicate map vote request.
+        assert voter.squad_rcon_client.exec_command.call_count == exec_call_count
+
+        # Case 8: when we intentionally don't reset the map vote, the previous map votes count. One more new map vote
         # makes it return True now.
-        with mock.patch.object(voter.squad_rcon_client, 'get_all_player_ids') as mock_get_player_ids:
-            mock_get_player_ids.return_value = [f'id{i}' for i in range(50)]
-            # This player never asked previously, so adding their map vote request means there are enough players now.
-            voter.recent_player_chat = {'id2': player_chat_class(
-                ['I have decided to add my vote', '!mapvote'])}
-            assert voter.did_enough_players_ask_for_map_vote()
+        # This player never asked previously, so adding their map vote request means there are enough players now.
+        new_player_number = mapvoter.NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD + 1
+        voter.recent_player_chat = {f'id{new_player_number}': player_chat_class(
+            ['I have decided to add my vote', '!mapvote'])}
+        assert voter.did_enough_players_ask_for_map_vote()
+        # Despite the new map vote request, no broadcast is sent since the map vote has enough asks.
+        assert voter.squad_rcon_client.exec_command.call_count == exec_call_count
+
+        # NOTE(bsubei): we must reset to remove the previous map vote requests and chat.
+        voter.reset_map_vote()
+        voter.recent_player_chat = {}
+
+        # Case 9: we test with a mixture of different map vote commands.
+        for i in range(0, mapvoter.NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD + 1):
+            command = random.choice(mapvoter.MAP_VOTE_COMMANDS)
+            voter.recent_player_chat.update({f'id{i}': player_chat_class([command, 'random banter'])})
+        assert voter.did_enough_players_ask_for_map_vote()
 
     def test_did_one_clan_member_ask_for_map_vote(self, voter):
         """ Tests for did_one_clan_member_ask_for_map_vote. """
@@ -470,6 +496,7 @@ class TestMapVoter:
             'id1': player_chat_class('rando duder', ['!mapvote']),
             'id2': player_chat_class(f'{CLAN_TAG} dudette', ['your vote does not matter'])}
         assert not voter.did_one_clan_member_ask_for_map_vote()
+
         # Case 5: one clan member requests a map vote (that's enough to make it return True).
         voter.recent_player_chat = {
             'id1': player_chat_class('rando duder', ['hello friends!']),
@@ -481,4 +508,11 @@ class TestMapVoter:
         voter.recent_player_chat = {
             'id1': player_chat_class(f'{CLAN_TAG}duder', ['!mapvote yay']),
             'id2': player_chat_class(f'{CLAN_TAG} dudette', ['hai there', 'ok fine !mapvote since you said please'])}
+        assert voter.did_one_clan_member_ask_for_map_vote()
+
+        # Case 7: a clan member asks for a map vote (chosen from the list of map vote commands).
+        command = random.choice(mapvoter.MAP_VOTE_COMMANDS)
+        voter.recent_player_chat = {
+            'id1': player_chat_class('rando duder', ['hello friends!']),
+            'id2': player_chat_class(f'{CLAN_TAG} dudette', ['hai there', f'ok fine {command} since you said please'])}
         assert voter.did_one_clan_member_ask_for_map_vote()
