@@ -21,13 +21,13 @@ import logging
 from srcds import rcon
 from mapvoter import mapvoter
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger()
 
 # The default port for RCON.
 DEFAULT_PORT = 21114
 
 # How long to sleep in between each "has the map changed" check (in seconds).
-SLEEP_BETWEEN_MAP_CHECKS_S = 5.0
+SLEEP_BETWEEN_MAP_CHECKS_S = 10.0
 
 
 def parse_cli():
@@ -68,18 +68,8 @@ def setup_logger(verbose):
     logger.addHandler(ch)
 
 
-def main():
-    """ Run the Map Voter script. """
-    print('Starting up mapvoter script!')
-    args = parse_cli()
-
-    # Set up the logger.
-    setup_logger(args.verbose)
-
-# TODO wrap as much of this as possible in a function so an rconbot can just call this along with other things.
-# TODO make an actual rconbot executable that calls into mapvoter functionality generically (so the other
-# functionalities can just be plugin-like).
-# TODO make this robust to connection failures. Make it retry slowly.
+# TODO(bsubei): create a plugin abstract class that voter (and more stuff I make) implement and get called here.
+def connect_and_run_plugins(args):
     # Set up the connection to RCON using a managed context (socket is closed automatically once we leave this context).
     with rcon.get_managed_rcon_connection(args.rcon_address, port=args.rcon_port, password=args.rcon_password) as conn:
         # Initialize the mapvoter.
@@ -107,6 +97,23 @@ def main():
             )
 
             time.sleep(SLEEP_BETWEEN_MAP_CHECKS_S)
+
+
+def main():
+    """ Run the RCON bot script. """
+    print('Starting up rconbot script!')
+    args = parse_cli()
+
+    # Set up the logger.
+    setup_logger(args.verbose)
+
+    # Connect to RCON server and run plugins, and if you fail keep retrying (does not swallow keyboard interrupts).
+    while True:
+        try:
+            connect_and_run_plugins(args)
+        except Exception as e:
+            logger.error(f'Encountered error: {e}. Retrying...')
+        time.sleep(10.0)
 
 
 if __name__ == '__main__':
