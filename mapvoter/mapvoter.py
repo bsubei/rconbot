@@ -1,5 +1,3 @@
-#! /usr/bin/env python3
-
 # Copyright (C) 2019 Basheer Subei
 #
 # This program is free software: you can redistribute it and/or modify it under
@@ -12,21 +10,18 @@
 # You should have received a copy of the GNU General Public License along with
 # this program. If not, see <http://www.gnu.org/licenses/>.
 #
-# A class and script that handles map voting mechanics to be used by a Squad RCON client.
+# A class that handles map voting mechanics to be used by a Squad RCON bot.
 #
 
-import argparse
 import collections
 import time
 import logging
 import random
 import re
 
-from srcds import rcon
 import squad_map_randomizer
 
 logger = logging.getLogger(__name__)
-
 
 # Wait this long in between map votes.
 DEFAULT_VOTING_COOLDOWN_S = 60 * 30
@@ -43,14 +38,8 @@ VOTE_REDO_MESSAGE_TEMPLATE = 'The none of the above option had the most votes ({
 # How long to listen to chat for vote casts in seconds.
 DEFAULT_VOTING_TIME_DURATION_S = 30.0
 
-# The default port for RCON.
-DEFAULT_PORT = 21114
-
 # The default URL to use to fetch the Squad map layers.
 DEFAULT_LAYERS_URL = 'https://raw.githubusercontent.com/bsubei/squad_map_layers/master/layers.json'
-
-# How long to sleep in between each "has the map changed" check (in seconds).
-SLEEP_BETWEEN_MAP_CHECKS_S = 5.0
 
 # How many of the next maps in the current rotation to choose as candidates for the map vote.
 NUM_NEXT_MAPS_IN_ROTATION = 4
@@ -235,6 +224,8 @@ class MapVoter:
         should start if enough players have asked for it using MAP_VOTE_COMMANDS. A map vote should also start if any
         clan member uses a map vote command at any point (no time limit).
         """
+        # TODO(bsubei): send a broadcast message if players attempt !rtv on a cooldown (means I need to refactor a lot
+        # of this)
         return (self.did_one_clan_member_ask_for_map_vote() or
                 (self.get_duration_until_map_vote_available() <= 0 and self.did_enough_players_ask_for_map_vote()))
 
@@ -336,101 +327,45 @@ class MapVoter:
                     return True
         return False
 
+    # TODO(bsubei): add a unit test for this function.
+    # TODO(bsubei): make this logic non-blocking so it can play nice with all the other things running on the bot.
+    def run_once(self, current_map, next_map, recent_player_chat, **kwargs):
+        """
+        Runs the mapvoter logic once. Checks if a vote should start, and if so, starts a map vote, which blocks and
+        listens to answers and then sets the new map.
+        """
+        # Fetch the kwargs from the caller, and log a descriptive warning if it fails.
+        try:
+            map_rotation_filepath = kwargs['map_rotation_filepath']
+            map_layers_url = kwargs['map_layers_url']
+        except KeyError:
+            logger.error(f'Invalid arguments given to MapVoter run_once!')
+            raise
 
-def parse_cli():
-    """ Parses sys.argv (commandline args) and returns a parser with the arguments. """
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--rcon-address', required=True, help='The address to the RCON server (IP or URL).')
-    parser.add_argument('--rcon-port', type=int, help=f'The port for the RCON server. Defaults to {DEFAULT_PORT}.',
-                        default=DEFAULT_PORT)
-    parser.add_argument('--rcon-password', required=True, help='The password for the RCON server.')
-    parser.add_argument('--voting-cooldown', type=float,
-                        help=('How long to wait (in seconds) in between map votes. Defaults to '
-                              f'{DEFAULT_VOTING_COOLDOWN_S}.'), default=DEFAULT_VOTING_COOLDOWN_S)
-    parser.add_argument('--voting-duration', type=float,
-                        help=f'How long to listen for votes in seconds. Defaults to {DEFAULT_VOTING_TIME_DURATION_S}.',
-                        default=DEFAULT_VOTING_TIME_DURATION_S)
-    parser.add_argument('-v', '--verbose', dest='verbose', action='store_true', default=False,
-                        help='Verbose flag to indicate that DEBUG level output should be logged.')
-    parser.add_argument('--map-rotation-filepath',
-                        help=('The filepath to the map rotation. If specified, the mapvoting choices will include the '
-                              'next maps in the rotation. If unspecified, the choices will be a random set of maps '
-                              'from the provided map layers JSON file.'))
-    parser.add_argument('--map-layers-url', default=DEFAULT_LAYERS_URL,
-                        help=('The URL to the map layers JSON file containing all map layers to use for the map vote '
-                              'choices if a map rotation is not provided/used.'))
-    return parser.parse_args()
+        self.recent_player_chat = recent_player_chat
 
+        # Print out how long until or since map vote.
+        if self.get_duration_until_map_vote_available() > 0:
+            logger.debug(f'Time until map vote is available: {self.get_duration_until_map_vote_available()}')
+        else:
+            logger.debug(f'Time since map vote was available: {-self.get_duration_until_map_vote_available()}')
 
-def setup_logger(verbose):
-    """ Sets up the logger based on the verbosity level. """
-    level = logging.DEBUG if verbose else logging.INFO
+        # Print out how many players have asked for a map vote so far.
+        logger.debug(f'Number of players asking for map vote: {len(self.players_requesting_map_vote)}.')
 
-    ch = logging.StreamHandler()
-    ch.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-    ch.setLevel(level)
+        # If the next map is the same as current map, set a random map from the rotation as next map.
+        # NOTE(bsubei): the vote could force two consecutive maps to be the same. This will prevent that from
+        # happening.
+        if current_map == next_map:
+            random_map = random.choice(get_map_candidates(
+                                        map_rotation_filepath, map_layers_url, current_map)[1:-1])
+            logger.warning(f'Next map is same as current map! Setting to a random map: {random_map}')
+            self.squad_rcon_client.exec_command(f'AdminSetNextMap "{random_map}"')
 
-    logger.setLevel(level)
-    logger.addHandler(ch)
-
-
-def main():
-    """ Run the Map Voter script. """
-    print('Starting up mapvoter script!')
-    args = parse_cli()
-
-    # Set up the logger.
-    setup_logger(args.verbose)
-
-    # Set up the connection to RCON using a managed context (socket is closed automatically once we leave this context).
-    with rcon.get_managed_rcon_connection(args.rcon_address, port=args.rcon_port, password=args.rcon_password) as conn:
-        # Initialize the mapvoter.
-        mapvoter = MapVoter(conn, args.voting_cooldown, args.voting_duration)
-
-        logger.info(f'Will start checking for new map every {SLEEP_BETWEEN_MAP_CHECKS_S} seconds and waiting to start '
-                    'a map vote...')
-
-        # Get the current map at start so we know when the map changes.
-        current_map, next_map = mapvoter.squad_rcon_client.get_current_and_next_map()
-
-        # Spin until we're done, but do it slowly.
-        while True:
-            # Check if we started a new map, and reset the mapvoter timer if it did.
-            current_map, next_map = mapvoter.squad_rcon_client.get_current_and_next_map()
-            logger.debug(f'Current map: {current_map}, next map: {next_map}')
-
-            # Print out how long until or since map vote.
-            if mapvoter.get_duration_until_map_vote_available() > 0:
-                logger.debug(f'Time until map vote is available: {mapvoter.get_duration_until_map_vote_available()}')
-            else:
-                logger.debug(f'Time since map vote was available: {-mapvoter.get_duration_until_map_vote_available()}')
-
-            # Print out how many players have asked for a map vote so far.
-            logger.debug(f'Number of players asking for map vote: {len(mapvoter.players_requesting_map_vote)}.')
-
-            # If the next map is the same as current map, set a random map from the rotation as next map.
-            # NOTE(bsubei): the vote could force two consecutive maps to be the same. This will prevent that from
-            # happening.
-            if current_map == next_map:
-                random_map = random.choice(get_map_candidates(
-                                            args.map_rotation_filepath, args.map_layers_url, current_map)[1:-1])
-                logger.warning(f'Next map is same as current map! Setting to a random map: {random_map}')
-                mapvoter.squad_rcon_client.exec_command(f'AdminSetNextMap "{random_map}"')
-
-            # Get most recent player messages since we last asked for the current map.
-            mapvoter.recent_player_chat = mapvoter.squad_rcon_client.get_player_chat()
-            mapvoter.squad_rcon_client.clear_player_chat()
-
-            # If it's time to vote, start the vote!
-            if mapvoter.should_start_map_vote():
-                # In the special case that a redo is requested, omit the rotation filepath so we pick random maps. Also
-                # reset the redo flag.
-                rotation_filepath = None if mapvoter.redo_requested else args.map_rotation_filepath
-                mapvoter.redo_requested = False
-                mapvoter.start_map_vote(get_map_candidates(rotation_filepath, args.map_layers_url, current_map))
-
-            time.sleep(SLEEP_BETWEEN_MAP_CHECKS_S)
-
-
-if __name__ == '__main__':
-    main()
+        # If it's time to vote, start the vote!
+        if self.should_start_map_vote():
+            # In the special case that a redo is requested, omit the rotation filepath so we pick random maps. Also
+            # reset the redo flag.
+            rotation_filepath = None if self.redo_requested else map_rotation_filepath
+            self.redo_requested = False
+            self.start_map_vote(get_map_candidates(rotation_filepath, map_layers_url, current_map))
