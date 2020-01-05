@@ -59,7 +59,7 @@ REDO_VOTE_OPTION = 'None of the above (do nothing)'
 
 def has_map_vote_command(message):
     """ Helper that returns True if the message contains any of the map vote commands and False otherwise. """
-    return any(1 for command in MAP_VOTE_COMMANDS if command in message)
+    return any(1 for command in MAP_VOTE_COMMANDS if command in message.lower())
 
 
 def get_rotation_from_filepath(map_rotation_filepath):
