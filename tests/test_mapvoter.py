@@ -508,7 +508,7 @@ class TestMapVoter:
             voter.recent_player_chat.update({f'id{i}': player_chat_class([command, 'random banter'])})
         assert voter.did_enough_players_ask_for_map_vote()
 
-        # Case 10: yes
+        # Case 10: case-insensitivity check for incoming chat commands
         voter.recent_player_chat = {
             f'id{i}': player_chat_class(['!mApvOte']) for i in range(
                 0, mapvoter.NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD + 1)}
