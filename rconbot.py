@@ -15,6 +15,8 @@
 #
 
 import argparse
+from datetime import datetime
+from pathlib import Path
 import time
 import logging
 
@@ -64,8 +66,15 @@ def setup_logger(verbose):
     ch.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     ch.setLevel(level)
 
+    # Create a directory to store the log files in.
+    log_dir = Path.cwd() / 'logs'
+    Path.mkdir(log_dir, exist_ok=True)
+    log_filename = log_dir / datetime.now().isoformat().replace('.', '_').replace(':', '_')
+    fh = logging.FileHandler(log_filename)
+
     logger.setLevel(level)
     logger.addHandler(ch)
+    logger.addHandler(fh)
 
 
 # TODO(bsubei): create a plugin abstract class that voter (and more stuff I make) implement and get called here.
