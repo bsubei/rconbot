@@ -221,13 +221,12 @@ class MapVoter:
         Returns True if the map vote should start, and False otherwise.
 
         If the map vote is available (enough time has elapsed since previous map vote), then a map vote
-        should start if enough players have asked for it using MAP_VOTE_COMMANDS. A map vote should also start if any
-        clan member uses a map vote command at any point (no time limit).
+        should start if enough players (or just one clan member) have asked for it using MAP_VOTE_COMMANDS.
         """
         # TODO(bsubei): send a broadcast message if players attempt !rtv on a cooldown (means I need to refactor a lot
         # of this)
-        return (self.did_one_clan_member_ask_for_map_vote() or
-                (self.get_duration_until_map_vote_available() <= 0 and self.did_enough_players_ask_for_map_vote()))
+        return (self.get_duration_until_map_vote_available() <= 0 and
+                (self.did_one_clan_member_ask_for_map_vote() or self.did_enough_players_ask_for_map_vote()))
 
     def listen_to_votes(self, sleep_duration_s, halftime_message=None):
         """
@@ -291,6 +290,9 @@ class MapVoter:
                 self.squad_rcon_client.exec_command(f'AdminBroadcast {vote_redo_message}')
                 logger.info(vote_redo_message)
                 self.redo_requested = True
+                # NOTE(bsubei): we reset despite the redo, in order to avoid spamming votes despite the majority wanting
+                # to keep the same map.
+                self.reset_map_vote()
         else:
             # Else, send a message saying voting failed. We do not reset because the map vote failed.
             vote_failed_message = 'The map vote failed!'
