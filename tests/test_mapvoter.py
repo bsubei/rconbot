@@ -278,12 +278,14 @@ class TestMapVoter:
 
         # Case 1b: After not enough time has elapsed, a mapvoter should still be unable to start a map vote.
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s -
+            1.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
             False)
 
         # Case 1c: After enough time has elapsed, a mapvoter should be able to start a map vote.
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s +
+            1.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
             True)
 
         # Case 1d: if time has gone back (negative elapsed time), still return should not start map vote.
@@ -292,32 +294,40 @@ class TestMapVoter:
 
         # Case 2: When map vote is never requested, never start a map vote no matter how much time passes.
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s +
+            1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
             False)
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s -
+            1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
             False)
 
         # Case 3: If map vote requested after enough time has elapsed, allow a map vote.
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s -
+            1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
             False)
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s +
+            1.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
             True)
 
         # Case 4: If a clan member requested a vote, then allow a map vote regardless of anything else.
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_REQUESTED,
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s -
+            1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_REQUESTED,
             True)
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s - 1.0, VOTE_REQUESTED, CLAN_MEMBER_REQUESTED,
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s -
+            1.0, VOTE_REQUESTED, CLAN_MEMBER_REQUESTED,
             True)
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_REQUESTED,
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s +
+            1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_REQUESTED,
             True)
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_REQUESTED, CLAN_MEMBER_REQUESTED,
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s +
+            1.0, VOTE_REQUESTED, CLAN_MEMBER_REQUESTED,
             True)
 
     def test_start_map_vote_fails(self, voter):
@@ -354,7 +364,8 @@ class TestMapVoter:
         PREDETERMINED_WINNER_COUNT = 200
         with mock.patch('mapvoter.mapvoter.get_highest_map_vote') as fake_get_highest_map_vote, (
                 mock.patch('mapvoter.mapvoter.time.sleep')):
-            fake_get_highest_map_vote.return_value = (PREDETERMINED_WINNER_MAP, PREDETERMINED_WINNER_COUNT)
+            fake_get_highest_map_vote.return_value = (
+                PREDETERMINED_WINNER_MAP, PREDETERMINED_WINNER_COUNT)
             voter.start_map_vote(FAKE_CANDIDATE_MAPS)
 
         # Check that the start vote message is sent using the squad_rcon_client.
@@ -388,7 +399,8 @@ class TestMapVoter:
         PREDETERMINED_WINNER_COUNT = 200
         with mock.patch('mapvoter.mapvoter.get_highest_map_vote') as fake_get_highest_map_vote, (
                 mock.patch('mapvoter.mapvoter.time.sleep')):
-            fake_get_highest_map_vote.return_value = (PREDETERMINED_WINNER_MAP, PREDETERMINED_WINNER_COUNT)
+            fake_get_highest_map_vote.return_value = (
+                PREDETERMINED_WINNER_MAP, PREDETERMINED_WINNER_COUNT)
             voter.start_map_vote(FAKE_CANDIDATE_MAPS)
 
         # Check that the start vote message is sent using the squad_rcon_client.
@@ -512,7 +524,7 @@ class TestMapVoter:
         voter.recent_player_chat = {
             f'id{i}': player_chat_class(['!mApvOte']) for i in range(
                 0, mapvoter.NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD + 1)}
-        assert voter.did_enough_players_ask_for_map_vote()        
+        assert voter.did_enough_players_ask_for_map_vote()
 
     def test_did_one_clan_member_ask_for_map_vote(self, voter):
         """ Tests for did_one_clan_member_ask_for_map_vote. """

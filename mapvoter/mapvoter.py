@@ -101,21 +101,26 @@ def get_map_candidates(map_rotation_filepath, map_layers_url, current_map):
             rotation_length = len(map_rotation)
 
             # Choose a random skirmish map plus the next N maps in the rotation as the candidates plus a redo option.
-            random_skirmish = squad_map_randomizer.get_random_skirmish_layer(NO_FILEPATH, map_layers_url)
-            candidates = [random_skirmish] + map_rotation[next_map_index:next_map_index + NUM_NEXT_MAPS_IN_ROTATION]
+            random_skirmish = squad_map_randomizer.get_random_skirmish_layer(
+                NO_FILEPATH, map_layers_url)
+            candidates = ([random_skirmish] +
+                          map_rotation[next_map_index:next_map_index + NUM_NEXT_MAPS_IN_ROTATION])
 
             # Wrap around the rotation list.
             if next_map_index + NUM_NEXT_MAPS_IN_ROTATION >= rotation_length:
-                candidates += map_rotation[:next_map_index + NUM_NEXT_MAPS_IN_ROTATION - rotation_length]
+                candidates += map_rotation[:next_map_index +
+                                           NUM_NEXT_MAPS_IN_ROTATION - rotation_length]
             # Don't forget to include the redo option if none of the options are preferred.
             return candidates + [REDO_VOTE_OPTION]
         except ValueError:
-            logger.error('Failed to find current map in rotation! Using random maps as candidates instead of rotation!')
+            logger.error(
+                'Failed to find current map in rotation! Using random maps as candidates instead of rotation!')
 
     # Otherwise, just use random maps as candidates (and a redo option).
-    all_map_layers = squad_map_randomizer.get_json_layers(NO_FILEPATH, map_layers_url)
+    all_map_layers = squad_map_randomizer.get_json_layers(
+        NO_FILEPATH, map_layers_url)
     rotation = squad_map_randomizer.get_map_rotation(
-                all_map_layers, num_starting_skirmish_maps=1, num_repeating_pattern=1)
+        all_map_layers, num_starting_skirmish_maps=1, num_repeating_pattern=1)
     return squad_map_randomizer.get_layers(rotation) + [REDO_VOTE_OPTION]
 
 
@@ -286,7 +291,8 @@ class MapVoter:
                 self.reset_map_vote()
             # If the voting was valid but a redo option was chosen, run the map vote again (set redo_requested flag).
             else:
-                vote_redo_message = VOTE_REDO_MESSAGE_TEMPLATE.format(vote_count)
+                vote_redo_message = VOTE_REDO_MESSAGE_TEMPLATE.format(
+                    vote_count)
                 self.squad_rcon_client.exec_command(f'AdminBroadcast {vote_redo_message}')
                 logger.info(vote_redo_message)
                 self.redo_requested = True
@@ -360,7 +366,7 @@ class MapVoter:
         # happening.
         if current_map == next_map:
             random_map = random.choice(get_map_candidates(
-                                        map_rotation_filepath, map_layers_url, current_map)[1:-1])
+                map_rotation_filepath, map_layers_url, current_map)[1:-1])
             logger.warning(f'Next map is same as current map! Setting to a random map: {random_map}')
             self.squad_rcon_client.exec_command(f'AdminSetNextMap "{random_map}"')
 
@@ -370,4 +376,5 @@ class MapVoter:
             # reset the redo flag.
             rotation_filepath = None if self.redo_requested else map_rotation_filepath
             self.redo_requested = False
-            self.start_map_vote(get_map_candidates(rotation_filepath, map_layers_url, current_map))
+            self.start_map_vote(get_map_candidates(
+                rotation_filepath, map_layers_url, current_map))

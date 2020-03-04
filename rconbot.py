@@ -35,10 +35,12 @@ SLEEP_BETWEEN_MAP_CHECKS_S = 10.0
 def parse_cli():
     """ Parses sys.argv (commandline args) and returns a parser with the arguments. """
     parser = argparse.ArgumentParser()
-    parser.add_argument('--rcon-address', required=True, help='The address to the RCON server (IP or URL).')
+    parser.add_argument('--rcon-address', required=True,
+                        help='The address to the RCON server (IP or URL).')
     parser.add_argument('--rcon-port', type=int, help=f'The port for the RCON server. Defaults to {DEFAULT_PORT}.',
                         default=DEFAULT_PORT)
-    parser.add_argument('--rcon-password', required=True, help='The password for the RCON server.')
+    parser.add_argument('--rcon-password', required=True,
+                        help='The password for the RCON server.')
     parser.add_argument('--voting-cooldown', type=float,
                         help=('How long to wait (in seconds) in between map votes. Defaults to '
                               f'{mapvoter.DEFAULT_VOTING_COOLDOWN_S}.'), default=mapvoter.DEFAULT_VOTING_COOLDOWN_S)
@@ -63,13 +65,15 @@ def setup_logger(verbose):
     level = logging.DEBUG if verbose else logging.INFO
 
     ch = logging.StreamHandler()
-    ch.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    ch.setFormatter(logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     ch.setLevel(level)
 
     # Create a directory to store the log files in.
     log_dir = Path.cwd() / 'logs'
     Path.mkdir(log_dir, exist_ok=True)
-    log_filename = log_dir / datetime.now().isoformat().replace('.', '_').replace(':', '_')
+    log_filename = log_dir / datetime.now().isoformat().replace('.',
+                                                                '_').replace(':', '_')
     fh = logging.FileHandler(log_filename)
 
     logger.setLevel(level)
@@ -82,7 +86,8 @@ def connect_and_run_plugins(args):
     # Set up the connection to RCON using a managed context (socket is closed automatically once we leave this context).
     with rcon.get_managed_rcon_connection(args.rcon_address, port=args.rcon_port, password=args.rcon_password) as conn:
         # Initialize the mapvoter.
-        voter = mapvoter.MapVoter(conn, args.voting_cooldown, args.voting_duration)
+        voter = mapvoter.MapVoter(
+            conn, args.voting_cooldown, args.voting_duration)
 
         logger.info(f'Will start checking for new map every {SLEEP_BETWEEN_MAP_CHECKS_S} seconds and waiting to start '
                     'a map vote...')
