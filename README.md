@@ -29,7 +29,7 @@ See [the official website](https://joinsquad.com/) for information on Squad.
 - The list of RCON allowed commands are found [in the wiki](https://squad.gamepedia.com/Server_Administration).
 
 # Python version and testing.
-I used Python 3.6.8 to write this, and used pytest (the python3 version) to run the tests. Just use `python3 -m pytest`
+I used Python 3.6.8 to write this, and used pytest (the python3 version) to run the tests. Just use `python3 -m pytest tests/`
 in the root directory to run the unit tests. Auto-linting is done using `autopep8 --in-place <filename>`.
 
 # Installation

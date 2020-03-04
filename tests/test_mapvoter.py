@@ -312,23 +312,32 @@ class TestMapVoter:
             1.0, VOTE_REQUESTED, CLAN_MEMBER_NOT_REQUESTED,
             True)
 
-        # Case 4: If a clan member requested a vote, then allow a map vote regardless of anything else.
+        # Case 4: If a clan member requested a vote, test the same cases as Case 1.
+        # Case 4a: On startup, a mapvoter should be unable to start a map vote.
+        TestMapVoter.check_should_start_map_vote(
+            voter, TIME_NOW, TIME_NOW, VOTE_NOT_REQUESTED, CLAN_MEMBER_REQUESTED, False)
+
+        # Case 4b: After not enough time has elapsed, a mapvoter should still be unable to start a map vote.
         TestMapVoter.check_should_start_map_vote(
             voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s -
             1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_REQUESTED,
-            True)
-        TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s -
-            1.0, VOTE_REQUESTED, CLAN_MEMBER_REQUESTED,
-            True)
+            False)
+
+        # Case 4c: After enough time has elapsed, a mapvoter should be able to start a map vote.
         TestMapVoter.check_should_start_map_vote(
             voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s +
             1.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_REQUESTED,
             True)
+
+        # Case 4d: if time has gone back (negative elapsed time), still return should not start map vote.
         TestMapVoter.check_should_start_map_vote(
-            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s +
-            1.0, VOTE_REQUESTED, CLAN_MEMBER_REQUESTED,
-            True)
+            voter, TIME_NOW, TIME_NOW - 100000.0, VOTE_NOT_REQUESTED, CLAN_MEMBER_REQUESTED, False)
+
+        # Case 5: Check cases when both clan members and other voters requested.
+        TestMapVoter.check_should_start_map_vote(
+            voter, TIME_NOW, TIME_NOW, VOTE_REQUESTED, CLAN_MEMBER_REQUESTED, False)
+        TestMapVoter.check_should_start_map_vote(
+            voter, TIME_NOW, TIME_NOW + voter.voting_cooldown_s + 1.0, VOTE_REQUESTED, CLAN_MEMBER_REQUESTED, True)
 
     def test_start_map_vote_fails(self, voter):
         """ Tests for start_map_vote when it fails. """
