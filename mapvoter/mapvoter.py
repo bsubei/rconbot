@@ -41,9 +41,6 @@ DEFAULT_VOTING_TIME_DURATION_S = 30.0
 # The default URL to use to fetch the Squad map layers.
 DEFAULT_LAYERS_URL = 'https://raw.githubusercontent.com/bsubei/squad_map_layers/master/layers.json'
 
-# How many of the next maps in the current rotation to choose as candidates for the map vote.
-NUM_NEXT_MAPS_IN_ROTATION = 4
-
 # The minimum number of players that request a map vote before a map vote is allowed.
 NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD = 5
 
@@ -73,54 +70,16 @@ def get_rotation_from_filepath(map_rotation_filepath):
         return list(filter(None, [line.strip('\n') for line in f.readlines()]))
 
 
-def get_map_candidates(map_rotation_filepath, map_layers_url, current_map):
+def get_map_candidates(config, all_map_layers):
     """
-    Return the candidate map layers for a vote based on whether a rotation is provided or not.
+    Return the candidate map layers for a vote based on the filters provided in the config and the available map layers.
 
-    If a rotation is provided, then return a random skirmish map and the next NUM_NEXT_MAPS_IN_ROTATION maps in the
-    rotation.
-
-    If a rotation is not provided, then pick a random skirmish map and NUM_NEXT_MAPS_IN_ROTATION more random maps from
-    the map layers JSON file.
-
-    NOTE: it is assumed that the rotation has no duplicate layers (this is needed to figure out the next layers to
-    choose in the rotation).
-
-    :param map_rotation_filepath: str | None The filepath to the map rotation to use, or None.
-    :param map_layers_url: str | None The URL to the map layers JSON file to use if the rotation is not provided.
-    :param current_map: str The map layer that is currently being played.
-    :return: list(str) The list of map layers to use as candidates in the map vote. The first is always a Skirmish map.
+    :param config: dict The config that describes how to choose the rotation.
+    :param all_map_layers: list(str) The list of map layers to choose candidates from.
+    :return: list(str) The list of map candidates. The last choice is always a "redo" option.
     """
-    NO_FILEPATH = None
-    # If a map rotation is provided, use the next N maps as candidates.
-    if map_rotation_filepath:
-        # Find the index of the current map in the rotation.
-        map_rotation = get_rotation_from_filepath(map_rotation_filepath)
-        try:
-            next_map_index = map_rotation.index(current_map) + 1
-            rotation_length = len(map_rotation)
-
-            # Choose a random skirmish map plus the next N maps in the rotation as the candidates plus a redo option.
-            random_skirmish = squad_map_randomizer.get_random_skirmish_layer(
-                NO_FILEPATH, map_layers_url)
-            candidates = ([random_skirmish] +
-                          map_rotation[next_map_index:next_map_index + NUM_NEXT_MAPS_IN_ROTATION])
-
-            # Wrap around the rotation list.
-            if next_map_index + NUM_NEXT_MAPS_IN_ROTATION >= rotation_length:
-                candidates += map_rotation[:next_map_index +
-                                           NUM_NEXT_MAPS_IN_ROTATION - rotation_length]
-            # Don't forget to include the redo option if none of the options are preferred.
-            return candidates + [REDO_VOTE_OPTION]
-        except ValueError:
-            logger.error(
-                'Failed to find current map in rotation! Using random maps as candidates instead of rotation!')
-
     # Otherwise, just use random maps as candidates (and a redo option).
-    all_map_layers = squad_map_randomizer.get_json_layers(
-        NO_FILEPATH, map_layers_url)
-    rotation = squad_map_randomizer.get_map_rotation(
-        all_map_layers, num_starting_skirmish_maps=1, num_repeating_pattern=1)
+    rotation = squad_map_randomizer.get_map_rotation(config, all_map_layers)
     return squad_map_randomizer.get_layers(rotation) + [REDO_VOTE_OPTION]
 
 
@@ -342,15 +301,21 @@ class MapVoter:
         Runs the mapvoter logic once. Checks if a vote should start, and if so, starts a map vote, which blocks and
         listens to answers and then sets the new map.
         """
+
         # Fetch the kwargs from the caller, and log a descriptive warning if it fails.
         try:
-            map_rotation_filepath = kwargs['map_rotation_filepath']
+            config_filepath = kwargs['config_filepath']
             map_layers_url = kwargs['map_layers_url']
         except KeyError:
             logger.error(f'Invalid arguments given to MapVoter run_once!')
             raise
 
         self.recent_player_chat = recent_player_chat
+
+        # Get the config and layers to choose from.
+        NO_FILEPATH = None
+        all_map_layers = squad_map_randomizer.get_json_layers(NO_FILEPATH, map_layers_url)
+        config = squad_map_randomizer.parse_config(config_filepath, all_map_layers)
 
         # Print out how long until or since map vote.
         if self.get_duration_until_map_vote_available() > 0:
@@ -365,8 +330,7 @@ class MapVoter:
         # NOTE(bsubei): the vote could force two consecutive maps to be the same. This will prevent that from
         # happening.
         if current_map == next_map:
-            random_map = random.choice(get_map_candidates(
-                map_rotation_filepath, map_layers_url, current_map)[1:-1])
+            random_map = random.choice(get_map_candidates(config, all_map_layers)[1:-1])
             logger.warning(f'Next map is same as current map! Setting to a random map: {random_map}')
             self.squad_rcon_client.exec_command(f'AdminSetNextMap "{random_map}"')
 
@@ -374,7 +338,5 @@ class MapVoter:
         if self.should_start_map_vote():
             # In the special case that a redo is requested, omit the rotation filepath so we pick random maps. Also
             # reset the redo flag.
-            rotation_filepath = None if self.redo_requested else map_rotation_filepath
             self.redo_requested = False
-            self.start_map_vote(get_map_candidates(
-                rotation_filepath, map_layers_url, current_map))
+            self.start_map_vote(get_map_candidates(config, all_map_layers))

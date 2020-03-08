@@ -16,9 +16,10 @@
 
 import argparse
 from datetime import datetime
-from pathlib import Path
+import pathlib
 import time
 import logging
+import os
 
 from srcds import rcon
 from mapvoter import mapvoter
@@ -31,6 +32,10 @@ DEFAULT_PORT = 21114
 # How long to sleep in between each "has the map changed" check (in seconds).
 SLEEP_BETWEEN_MAP_CHECKS_S = 10.0
 
+# The default filepath for the map rotation config (defines what filters to use when choosing candidates).
+DEFAULT_CONFIG_FILEPATH = (pathlib.Path(os.path.dirname(mapvoter.squad_map_randomizer.__file__)) /
+                           pathlib.Path('configs/default_config.yml'))
+
 
 def parse_cli():
     """ Parses sys.argv (commandline args) and returns a parser with the arguments. """
@@ -41,6 +46,10 @@ def parse_cli():
                         default=DEFAULT_PORT)
     parser.add_argument('--rcon-password', required=True,
                         help='The password for the RCON server.')
+    parser.add_argument('-v', '--verbose', dest='verbose', action='store_true', default=False,
+                        help='Verbose flag to indicate that DEBUG level output should be logged.')
+
+    # Mapvoter-specific CLI arguments.
     parser.add_argument('--voting-cooldown', type=float,
                         help=('How long to wait (in seconds) in between map votes. Defaults to '
                               f'{mapvoter.DEFAULT_VOTING_COOLDOWN_S}.'), default=mapvoter.DEFAULT_VOTING_COOLDOWN_S)
@@ -48,12 +57,9 @@ def parse_cli():
                         help=('How long to listen for votes in seconds. Defaults to '
                               f'{mapvoter.DEFAULT_VOTING_TIME_DURATION_S}.'),
                         default=mapvoter.DEFAULT_VOTING_TIME_DURATION_S)
-    parser.add_argument('-v', '--verbose', dest='verbose', action='store_true', default=False,
-                        help='Verbose flag to indicate that DEBUG level output should be logged.')
-    parser.add_argument('--map-rotation-filepath',
-                        help=('The filepath to the map rotation. If specified, the mapvoting choices will include the '
-                              'next maps in the rotation. If unspecified, the choices will be a random set of maps '
-                              'from the provided map layers JSON file.'))
+    parser.add_argument('-c', '--config-filepath', default=DEFAULT_CONFIG_FILEPATH, type=pathlib.Path,
+                        help=('Filepath to read map rotation config from. Defines what filters to use when choosing'
+                              f' candidates. Defaults to {DEFAULT_CONFIG_FILEPATH}.'))
     parser.add_argument('--map-layers-url', default=mapvoter.DEFAULT_LAYERS_URL,
                         help=('The URL to the map layers JSON file containing all map layers to use for the map vote '
                               'choices if a map rotation is not provided/used.'))
@@ -70,8 +76,8 @@ def setup_logger(verbose):
     ch.setLevel(level)
 
     # Create a directory to store the log files in.
-    log_dir = Path.cwd() / 'logs'
-    Path.mkdir(log_dir, exist_ok=True)
+    log_dir = pathlib.Path.cwd() / 'logs'
+    pathlib.Path.mkdir(log_dir, exist_ok=True)
     log_filename = log_dir / datetime.now().isoformat().replace('.',
                                                                 '_').replace(':', '_')
     fh = logging.FileHandler(log_filename)
@@ -106,7 +112,7 @@ def connect_and_run_plugins(args):
 
             voter.run_once(
                 current_map, next_map, recent_player_chat,
-                map_rotation_filepath=args.map_rotation_filepath,
+                config_filepath=args.config_filepath,
                 map_layers_url=args.map_layers_url
             )
 
