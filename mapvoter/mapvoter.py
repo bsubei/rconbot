@@ -152,9 +152,6 @@ class MapVoter:
         # Flag to indicate that a map vote should be redone (with random maps) as soon as possible.
         self.redo_requested = False
 
-        # The most recent player chat objects (dict of player id -> PlayerChat).
-        self.recent_player_chat = {}
-
         # Reset map vote timer since we just started. This sets self.time_since_map vote to time now.
         self.reset_map_vote()
 
@@ -180,7 +177,7 @@ class MapVoter:
         """
         return self.voting_cooldown_s - self.get_duration_since_map_vote()
 
-    def should_start_map_vote(self):
+    def should_start_map_vote(self, recent_player_chat):
         """
         Returns True if the map vote should start, and False otherwise.
 
@@ -190,7 +187,8 @@ class MapVoter:
         # TODO(bsubei): send a broadcast message if players attempt !rtv on a cooldown (means I need to refactor a lot
         # of this)
         return (self.get_duration_until_map_vote_available() <= 0 and
-                (self.did_one_clan_member_ask_for_map_vote() or self.did_enough_players_ask_for_map_vote()))
+                (self.did_one_clan_member_ask_for_map_vote(recent_player_chat) or
+                 self.did_enough_players_ask_for_map_vote(recent_player_chat)))
 
     def listen_to_votes(self, sleep_duration_s, halftime_message=None):
         """
@@ -231,12 +229,12 @@ class MapVoter:
         # Listen to the chat messages and collect them all as a dict of player_id -> PlayerChat where each player could
         # have posted a list of messages.
         self.listen_to_votes(self.voting_time_duration_s, start_vote_message)
-        self.recent_player_chat = self.squad_rcon_client.get_player_chat()
-        logger.debug(f'The received player messages were:\n{self.recent_player_chat}\n')
+        vote_chat = self.squad_rcon_client.get_player_chat()
+        logger.debug(f'The received player messages were:\n{vote_chat}\n')
 
         # Parse the chat messages into votes, and choose the map with the highest votes.
         result = get_highest_map_vote(
-            candidate_maps, self.recent_player_chat)
+            candidate_maps, vote_chat)
         if result:
             winner_map, vote_count = result
             # If the voting was valid and was not a redo option, send a message with the results, then set next map.
@@ -264,13 +262,13 @@ class MapVoter:
             self.squad_rcon_client.exec_command(f'AdminBroadcast {vote_failed_message}')
             logger.warning(vote_failed_message)
 
-    def did_enough_players_ask_for_map_vote(self):
+    def did_enough_players_ask_for_map_vote(self, recent_player_chat):
         """
         Returns True if enough players (above threshold) have recently requested a mapvote, and returns False otherwise.
         """
         previous_map_vote_requests = len(self.players_requesting_map_vote)
         # Check if any of the recent player messages had the map vote command in them.
-        for player_id, player_chat in self.recent_player_chat.items():
+        for player_id, player_chat in recent_player_chat.items():
             for message in player_chat.messages:
                 if has_map_vote_command(message):
                     self.players_requesting_map_vote.add(player_id)
@@ -284,11 +282,11 @@ class MapVoter:
                 f'AdminBroadcast {num_asks_remaining} more requests needed to start a map vote.')
         return enough_asked
 
-    def did_one_clan_member_ask_for_map_vote(self):
+    def did_one_clan_member_ask_for_map_vote(self, recent_player_chat):
         """
         Returns True if any clan members (see CLAN_TAG) recently requested a mapvote, and returns False otherwise.
         """
-        for player_id, player_chat in self.recent_player_chat.items():
+        for player_id, player_chat in recent_player_chat.items():
             for message in player_chat.messages:
                 if has_map_vote_command(message) and CLAN_TAG in player_chat.player_name:
                     return True
@@ -310,12 +308,12 @@ class MapVoter:
             logger.error(f'Invalid arguments given to MapVoter run_once!')
             raise
 
-        self.recent_player_chat = recent_player_chat
-
         # Get the config and layers to choose from.
         NO_FILEPATH = None
-        all_map_layers = squad_map_randomizer.get_json_layers(NO_FILEPATH, map_layers_url)
-        config = squad_map_randomizer.parse_config(config_filepath, all_map_layers)
+        all_map_layers = squad_map_randomizer.get_json_layers(
+            NO_FILEPATH, map_layers_url)
+        config = squad_map_randomizer.parse_config(
+            config_filepath, all_map_layers)
 
         # Print out how long until or since map vote.
         if self.get_duration_until_map_vote_available() > 0:
@@ -330,12 +328,13 @@ class MapVoter:
         # NOTE(bsubei): the vote could force two consecutive maps to be the same. This will prevent that from
         # happening.
         if current_map == next_map:
-            random_map = random.choice(get_map_candidates(config, all_map_layers)[1:-1])
+            random_map = random.choice(
+                get_map_candidates(config, all_map_layers)[1:-1])
             logger.warning(f'Next map is same as current map! Setting to a random map: {random_map}')
             self.squad_rcon_client.exec_command(f'AdminSetNextMap "{random_map}"')
 
         # If it's time to vote, start the vote!
-        if self.should_start_map_vote():
+        if self.should_start_map_vote(recent_player_chat):
             # In the special case that a redo is requested, omit the rotation filepath so we pick random maps. Also
             # reset the redo flag.
             self.redo_requested = False
