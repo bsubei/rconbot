@@ -99,11 +99,11 @@ def connect_and_run_plugins(args):
                     'a map vote...')
 
         # Get the current map at start so we know when the map changes.
-        current_map, next_map = voter.squad_rcon_client.get_current_and_next_map()
+        current_map, next_map = conn.get_current_and_next_map()
 
         # Spin until we're done, but do it slowly.
         while True:
-            current_map, next_map = voter.squad_rcon_client.get_current_and_next_map()
+            current_map, next_map = conn.get_current_and_next_map()
             logger.debug(f'Current map: {current_map}, next map: {next_map}')
 
             # Get most recent player messages since we last asked for the current map.
