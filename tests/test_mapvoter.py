@@ -58,71 +58,13 @@ class TestMapVoter:
 
     def test_get_map_candidates(self):
         """ Tests the get_map_candidates function. """
-        VALID_ROTATION_FILEPATH = 'a valid filepath'
-        VALID_CURRENT_MAP = 'a valid current map'
-        VALID_URL = 'a valid url'
-        NO_URL = None
-        SKIRMISH_LAYER = 'a skirmish layer'
-
-        with mock.patch('mapvoter.mapvoter.get_rotation_from_filepath') as mock_get_rotation:
-            with mock.patch('squad_map_randomizer.get_random_skirmish_layer') as mock_get_skirmish:
-                # The rotation will have this skirmish layer appended to it.
-                mock_get_skirmish.return_value = SKIRMISH_LAYER
-
-                # Case 1a: provide all three arguments (map rotation filepath, layers URL, and current map). With
-                # current map being in the middle of the rotation.
-                mock_get_rotation.return_value = [str(x) for x in range(
-                    5)] + [VALID_CURRENT_MAP] + [str(x) for x in range(5, 10)]
-                assert mapvoter.get_map_candidates(VALID_ROTATION_FILEPATH, VALID_URL, VALID_CURRENT_MAP) == [
-                    SKIRMISH_LAYER, '5', '6', '7', '8', mapvoter.REDO_VOTE_OPTION]
-
-                # Case 1b: provide all three arguments (map rotation filepath, layers URL, and current map). With
-                # current map being near the end of the rotation (to test for correct wrapping around the list).
-                mock_get_rotation.return_value = [str(x) for x in range(
-                    8)] + [VALID_CURRENT_MAP] + [str(x) for x in range(8, 10)]
-                assert mapvoter.get_map_candidates(VALID_ROTATION_FILEPATH, VALID_URL, VALID_CURRENT_MAP) == [
-                    SKIRMISH_LAYER, '8', '9', '0', '1', mapvoter.REDO_VOTE_OPTION]
-
-                # Case 1c: provide all three arguments (map rotation filepath, layers URL, and current map). With
-                # current map being in the end of the rotation.
-                mock_get_rotation.return_value = [
-                    str(x) for x in range(10)] + [VALID_CURRENT_MAP]
-                assert mapvoter.get_map_candidates(VALID_ROTATION_FILEPATH, VALID_URL, VALID_CURRENT_MAP) == [
-                    SKIRMISH_LAYER, '0', '1', '2', '3', mapvoter.REDO_VOTE_OPTION]
-
-                # Case 1d: provide all three arguments (map rotation filepath, layers URL, and current map). With
-                # current map being in the beginning of the rotation.
-                mock_get_rotation.return_value = [
-                    VALID_CURRENT_MAP] + [str(x) for x in range(10)]
-                assert mapvoter.get_map_candidates(VALID_ROTATION_FILEPATH, VALID_URL, VALID_CURRENT_MAP) == [
-                    SKIRMISH_LAYER, '0', '1', '2', '3', mapvoter.REDO_VOTE_OPTION]
-
-        # Case 2: Provide an invalid layers URL (expect a failure).
-        with mock.patch('mapvoter.mapvoter.get_rotation_from_filepath') as mock_get_rotation:
-            mock_get_rotation.return_value = [VALID_CURRENT_MAP]
-            with pytest.raises(ValueError):
-                mapvoter.get_map_candidates(
-                    VALID_ROTATION_FILEPATH, NO_URL, VALID_CURRENT_MAP)
-
-        # Case 3: Provide rotation filepath but current_map cannot be found in that rotation.
-        with mock.patch('mapvoter.mapvoter.get_rotation_from_filepath') as mock_get_rotation:
-            mock_get_rotation.return_value = [str(x) for x in range(10)]
-            with mock.patch('squad_map_randomizer.get_random_skirmish_layer') as mock_get_skirmish:
-                # The rotation will have this skirmish layer appended to it.
-                mock_get_skirmish.return_value = SKIRMISH_LAYER
-                with pytest.raises(ValueError):
-                    mapvoter.get_map_candidates(
-                        VALID_ROTATION_FILEPATH, VALID_URL, VALID_CURRENT_MAP)
-
-        # Case 4: No rotation filepath is provided, so it uses random layers from the JSON layers URL.
-        NO_ROTATION_FILEPATH = None
-        EXPECTED_CANDIDATES = ['the expected rotation']
-        with mock.patch('squad_map_randomizer.get_json_layers'), mock.patch('squad_map_randomizer.get_map_rotation'):
+        CONFIG = 'mock config'
+        ALL_LAYERS = 'mock layers'
+        RETURNED_LAYERS = ['1', '2', '3']
+        with mock.patch('squad_map_randomizer.get_map_rotation') as _:
             with mock.patch('squad_map_randomizer.get_layers') as mock_get_layers:
-                mock_get_layers.return_value = EXPECTED_CANDIDATES
-                assert mapvoter.get_map_candidates(
-                    NO_ROTATION_FILEPATH, VALID_URL, VALID_CURRENT_MAP) == EXPECTED_CANDIDATES + [
-                        mapvoter.REDO_VOTE_OPTION]
+                mock_get_layers.return_value = RETURNED_LAYERS
+                assert mapvoter.get_map_candidates(CONFIG, ALL_LAYERS) == RETURNED_LAYERS + [mapvoter.REDO_VOTE_OPTION]
 
     def test_format_candidate_maps(self):
         """ Tests the format_candidate_maps function. """
@@ -215,7 +157,6 @@ class TestMapVoter:
         assert voter.squad_rcon_client == TestMapVoter.MOCK_RCON_CLIENT
         assert voter.voting_time_duration_s == FAKE_VOTE_DURATION_S
         assert voter.voting_cooldown_s == FAKE_VOTE_COOLDOWN_S
-        assert len(voter.recent_player_chat) == 0
         assert voter.time_since_map_vote == TIME_NOW
         assert len(voter.players_requesting_map_vote) == 0
 
@@ -262,7 +203,8 @@ class TestMapVoter:
                     mock.patch.object(voter, 'did_one_clan_member_ask_for_map_vote')) as mock_clan_requested:
                 mock_vote_requested.return_value = is_vote_requested
                 mock_clan_requested.return_value = is_clan_member_requested
-                assert expected_should_start == voter.should_start_map_vote()
+                chat = {}
+                assert expected_should_start == voter.should_start_map_vote(chat)
 
     def test_should_start_map_vote(self, voter):
         """ Tests for should_start_map_vote. """
@@ -446,13 +388,14 @@ class TestMapVoter:
                                  '__init__': chat_init})
 
         # Case 1: if no one asked, then expect False.
-        assert not voter.did_enough_players_ask_for_map_vote()
+        chat = {}
+        assert not voter.did_enough_players_ask_for_map_vote(chat)
         # We also check that no broadcast message was sent since no one asked for a map vote.
         assert voter.squad_rcon_client.exec_command.call_count == 0
 
         # Case 2: if only one person asks, expect False.
-        voter.recent_player_chat = {'id1': player_chat_class(['!mapvote'])}
-        assert not voter.did_enough_players_ask_for_map_vote()
+        chat = {'id1': player_chat_class(['!mapvote'])}
+        assert not voter.did_enough_players_ask_for_map_vote(chat)
         # Since one person asked, we check that a broadcast message was sent.
         assert voter.squad_rcon_client.exec_command.call_count == 1
         assert (f'AdminBroadcast {mapvoter.NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD - 1} more requests' in
@@ -460,52 +403,52 @@ class TestMapVoter:
 
         # NOTE(bsubei): we must reset to remove the previous map vote requests and chat.
         voter.reset_map_vote()
-        voter.recent_player_chat = {}
+        chat = {}
 
         # Case 3: if not enough players ask (just below the threshold), expect False.
-        voter.recent_player_chat = {
+        chat = {
             f'id{i}': player_chat_class(['!mapvote']) for i in range(
                 0, mapvoter.NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD - 1)}
-        assert not voter.did_enough_players_ask_for_map_vote()
+        assert not voter.did_enough_players_ask_for_map_vote(chat)
 
         # NOTE(bsubei): we must reset to remove the previous map vote requests and chat.
         voter.reset_map_vote()
-        voter.recent_player_chat = {}
+        chat = {}
 
         # Case 4: if exactly enough players ask, expect True
-        voter.recent_player_chat = {
+        chat = {
             f'id{i}': player_chat_class(['!mapvote']) for i in range(
                 0, mapvoter.NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD)}
-        assert voter.did_enough_players_ask_for_map_vote()
+        assert voter.did_enough_players_ask_for_map_vote(chat)
 
         # NOTE(bsubei): we must reset to remove the previous map vote requests and chat.
         voter.reset_map_vote()
-        voter.recent_player_chat = {}
+        chat = {}
 
         # Case 5: if more than enough players ask, expect True
-        voter.recent_player_chat = {
+        chat = {
             f'id{i}': player_chat_class(['!mapvote']) for i in range(
                 0, mapvoter.NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD + 1)}
-        assert voter.did_enough_players_ask_for_map_vote()
+        assert voter.did_enough_players_ask_for_map_vote(chat)
 
         # NOTE(bsubei): we must reset to remove the previous map vote requests and chat.
         voter.reset_map_vote()
-        voter.recent_player_chat = {}
+        chat = {}
 
         # Case 6: if some players have duplicate map votes, don't count them.
-        voter.recent_player_chat = {
+        chat = {
             f'id{i}': player_chat_class(['!mapvote', f'{i} some chat', 'another !mapvote'])
             for i in range(0, mapvoter.NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD - 1)}
         # Since the duplicate map votes are not counted, there aren't enough map vote requests.
-        assert not voter.did_enough_players_ask_for_map_vote()
+        assert not voter.did_enough_players_ask_for_map_vote(chat)
         exec_call_count = voter.squad_rcon_client.exec_command.call_count
 
         # Case 7: when we intentionally don't reset the map vote, the previous map votes count. Another duplicate map
         # vote still does not count.
         # This player asked previously, so adding their map vote request should not be counted.
-        voter.recent_player_chat = {f'id0': player_chat_class(
+        chat = {f'id0': player_chat_class(
             ['I have decided vote twice', '!mapvote'])}
-        assert not voter.did_enough_players_ask_for_map_vote()
+        assert not voter.did_enough_players_ask_for_map_vote(chat)
         # Also check that no broadcast is sent for a duplicate map vote request.
         assert voter.squad_rcon_client.exec_command.call_count == exec_call_count
 
@@ -513,27 +456,27 @@ class TestMapVoter:
         # makes it return True now.
         # This player never asked previously, so adding their map vote request means there are enough players now.
         new_player_number = mapvoter.NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD + 1
-        voter.recent_player_chat = {f'id{new_player_number}': player_chat_class(
+        chat = {f'id{new_player_number}': player_chat_class(
             ['I have decided to add my vote', '!mapvote'])}
-        assert voter.did_enough_players_ask_for_map_vote()
+        assert voter.did_enough_players_ask_for_map_vote(chat)
         # Despite the new map vote request, no broadcast is sent since the map vote has enough asks.
         assert voter.squad_rcon_client.exec_command.call_count == exec_call_count
 
         # NOTE(bsubei): we must reset to remove the previous map vote requests and chat.
         voter.reset_map_vote()
-        voter.recent_player_chat = {}
+        chat = {}
 
         # Case 9: we test with a mixture of different map vote commands.
         for i in range(0, mapvoter.NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD + 1):
             command = random.choice(mapvoter.MAP_VOTE_COMMANDS)
-            voter.recent_player_chat.update({f'id{i}': player_chat_class([command, 'random banter'])})
-        assert voter.did_enough_players_ask_for_map_vote()
+            chat.update({f'id{i}': player_chat_class([command, 'random banter'])})
+        assert voter.did_enough_players_ask_for_map_vote(chat)
 
         # Case 10: case-insensitivity check for incoming chat commands
-        voter.recent_player_chat = {
+        chat = {
             f'id{i}': player_chat_class(['!mApvOte']) for i in range(
                 0, mapvoter.NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD + 1)}
-        assert voter.did_enough_players_ask_for_map_vote()
+        assert voter.did_enough_players_ask_for_map_vote(chat)
 
     def test_did_one_clan_member_ask_for_map_vote(self, voter):
         """ Tests for did_one_clan_member_ask_for_map_vote. """
@@ -548,48 +491,48 @@ class TestMapVoter:
         CLAN_TAG = mapvoter.CLAN_TAG
 
         # Case 1: no one sends any chat at all.
-        voter.recent_player_chat = {}
-        assert not voter.did_one_clan_member_ask_for_map_vote()
+        chat = {}
+        assert not voter.did_one_clan_member_ask_for_map_vote(chat)
 
         # Case 2: no one with a clan tag posts any chat.
-        voter.recent_player_chat = {'id1': player_chat_class(
+        chat = {'id1': player_chat_class(
             'rando duder', ['hello friends!']), 'id2': player_chat_class('dudette', ['hai there'])}
-        assert not voter.did_one_clan_member_ask_for_map_vote()
+        assert not voter.did_one_clan_member_ask_for_map_vote(chat)
 
         # Case 3: some clan members post chat but not a mapvote.
-        voter.recent_player_chat = {
+        chat = {
             'id1': player_chat_class('rando duder', ['hello friends!']),
             'id2': player_chat_class(f'{CLAN_TAG} dudette', ['hai there'])}
-        assert not voter.did_one_clan_member_ask_for_map_vote()
+        assert not voter.did_one_clan_member_ask_for_map_vote(chat)
 
         # Case 4: a non-clan member requests a map vote.
-        voter.recent_player_chat = {
+        chat = {
             'id1': player_chat_class('rando duder', ['!mapvote']),
             'id2': player_chat_class(f'{CLAN_TAG} dudette', ['your vote does not matter'])}
-        assert not voter.did_one_clan_member_ask_for_map_vote()
+        assert not voter.did_one_clan_member_ask_for_map_vote(chat)
 
         # Case 5: one clan member requests a map vote (that's enough to make it return True).
-        voter.recent_player_chat = {
+        chat = {
             'id1': player_chat_class('rando duder', ['hello friends!']),
             'id2': player_chat_class(f'{CLAN_TAG} dudette', ['hai there', 'ok fine !mapvote since you said please'])}
-        assert voter.did_one_clan_member_ask_for_map_vote()
+        assert voter.did_one_clan_member_ask_for_map_vote(chat)
 
         # NOTE(bsubei): we also test for missing space between clan tag and name.
         # Case 6: many clan members request a map vote.
-        voter.recent_player_chat = {
+        chat = {
             'id1': player_chat_class(f'{CLAN_TAG}duder', ['!mapvote yay']),
             'id2': player_chat_class(f'{CLAN_TAG} dudette', ['hai there', 'ok fine !mapvote since you said please'])}
-        assert voter.did_one_clan_member_ask_for_map_vote()
+        assert voter.did_one_clan_member_ask_for_map_vote(chat)
 
         # Case 7: a clan member asks for a map vote (chosen from the list of map vote commands).
         command = random.choice(mapvoter.MAP_VOTE_COMMANDS)
-        voter.recent_player_chat = {
+        chat = {
             'id1': player_chat_class('rando duder', ['hello friends!']),
             'id2': player_chat_class(f'{CLAN_TAG} dudette', ['hai there', f'ok fine {command} since you said please'])}
-        assert voter.did_one_clan_member_ask_for_map_vote()
+        assert voter.did_one_clan_member_ask_for_map_vote(chat)
 
         # Case 8: case-insensitivity check for incoming chat commands
-        voter.recent_player_chat = {
+        chat = {
             'id1': player_chat_class(f'{CLAN_TAG}duder', ['!mApvOtE yay']),
             'id2': player_chat_class(f'{CLAN_TAG} dudette', ['hai there', 'ok fine !maPvOte since you said please'])}
-        assert voter.did_one_clan_member_ask_for_map_vote()
+        assert voter.did_one_clan_member_ask_for_map_vote(chat)
