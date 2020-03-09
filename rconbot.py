@@ -34,7 +34,7 @@ SLEEP_BETWEEN_MAP_CHECKS_S = 10.0
 
 # The default filepath for the map rotation config (defines what filters to use when choosing candidates).
 DEFAULT_CONFIG_FILEPATH = (pathlib.Path(os.path.dirname(mapvoter.squad_map_randomizer.__file__)) /
-                           pathlib.Path('configs/default_config.yml'))
+                           'configs/default_config.yml')
 
 
 def parse_cli():
@@ -76,7 +76,7 @@ def setup_logger(verbose):
     ch.setLevel(level)
 
     # Create a directory to store the log files in.
-    log_dir = pathlib.Path.cwd() / 'logs'
+    log_dir = pathlib.Path(os.path.dirname(__file__)) / 'logs'
     pathlib.Path.mkdir(log_dir, exist_ok=True)
     log_filename = log_dir / datetime.now().isoformat().replace('.',
                                                                 '_').replace(':', '_')
