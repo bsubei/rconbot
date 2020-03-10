@@ -292,7 +292,6 @@ class MapVoter:
                     return True
         return False
 
-    # TODO(bsubei): add a unit test for this function.
     # TODO(bsubei): make this logic non-blocking so it can play nice with all the other things running on the bot.
     def run_once(self, current_map, next_map, recent_player_chat, **kwargs):
         """
@@ -326,10 +325,10 @@ class MapVoter:
 
         # If the next map is the same as current map, set a random map from the rotation as next map.
         # NOTE(bsubei): the vote could force two consecutive maps to be the same. This will prevent that from
-        # happening.
+        # happening. We skip the last candidate (always a redo option).
         if current_map == next_map:
             random_map = random.choice(
-                get_map_candidates(config, all_map_layers)[1:-1])
+                get_map_candidates(config, all_map_layers)[:-1])
             logger.warning(f'Next map is same as current map! Setting to a random map: {random_map}')
             self.squad_rcon_client.exec_command(f'AdminSetNextMap "{random_map}"')
 

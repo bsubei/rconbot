@@ -31,6 +31,12 @@ FAKE_VOTE_COOLDOWN_S = 77.0
 TIME_NOW = 69.0
 
 
+class MockPlayerChat(object):
+    def __init__(self, messages, player_name=None):
+        self.player_name = player_name
+        self.messages = messages
+
+
 class TestMapVoter:
     """ Test class (uses pytest) for the MapVoter class. """
 
@@ -88,35 +94,33 @@ class TestMapVoter:
 
         def chat_init(self, messages):
             self.messages = messages
-        player_chat_class = type('temp_player_chat', (object,), {
-                                 '__init__': chat_init})
 
         # Case 1: there are no player messages. Return None.
         assert mapvoter.get_highest_map_vote(FAKE_CANDIDATE_MAPS, {}) is None
 
         # Case 2a: there are no valid player messages that can be parsed as votes. Return None.
-        player_chat1 = player_chat_class([' bla bla', 'not valid messages'])
-        player_chat2 = player_chat_class(['not valid', 'ignore me'])
+        player_chat1 = MockPlayerChat([' bla bla', 'not valid messages'])
+        player_chat2 = MockPlayerChat(['not valid', 'ignore me'])
         assert mapvoter.get_highest_map_vote(
             FAKE_CANDIDATE_MAPS, {'id1': player_chat1, 'id2': player_chat2}) is None
         # Case 2b: a variant of the previous but with ints that are invalid.
-        player_chat1 = player_chat_class(['10000'])
-        player_chat2 = player_chat_class(['-22'])
+        player_chat1 = MockPlayerChat(['10000'])
+        player_chat2 = MockPlayerChat(['-22'])
         assert mapvoter.get_highest_map_vote(
             FAKE_CANDIDATE_MAPS, {'id1': player_chat1, 'id2': player_chat2}) is None
 
         # Case 3: there is only one valid vote cast (double votes by one player are ignored). Return the winning map.
-        player_chat1 = player_chat_class(['not an int'])
-        player_chat2 = player_chat_class(['1', 'changed my mind', '0'])
+        player_chat1 = MockPlayerChat(['not an int'])
+        player_chat2 = MockPlayerChat(['1', 'changed my mind', '0'])
         assert mapvoter.get_highest_map_vote(
             FAKE_CANDIDATE_MAPS,
             {'id1': player_chat1, 'id2': player_chat2}) == (FAKE_CANDIDATE_MAPS[0], 1)
 
         # Case 4: there are many valid votes but only for one map. Return the winning map.
-        player_chat1 = player_chat_class(['0', 'not an int'])
-        player_chat2 = player_chat_class(['yay', '0'])
-        player_chat3 = player_chat_class([])
-        player_chat4 = player_chat_class(['0'])
+        player_chat1 = MockPlayerChat(['0', 'not an int'])
+        player_chat2 = MockPlayerChat(['yay', '0'])
+        player_chat3 = MockPlayerChat([])
+        player_chat4 = MockPlayerChat(['0'])
         assert mapvoter.get_highest_map_vote(
             FAKE_CANDIDATE_MAPS, {
                 'id1': player_chat1,
@@ -126,10 +130,10 @@ class TestMapVoter:
             }) == (FAKE_CANDIDATE_MAPS[0], 3)
 
         # Case 5: there are many valid votes for multiple maps. Return the winning map.
-        player_chat1 = player_chat_class(['0', 'not an int'])
-        player_chat2 = player_chat_class(['yay', '1'])
-        player_chat3 = player_chat_class(['2'])
-        player_chat4 = player_chat_class(['1'])
+        player_chat1 = MockPlayerChat(['0', 'not an int'])
+        player_chat2 = MockPlayerChat(['yay', '1'])
+        player_chat3 = MockPlayerChat(['2'])
+        player_chat4 = MockPlayerChat(['1'])
         assert mapvoter.get_highest_map_vote(
             FAKE_CANDIDATE_MAPS, {
                 'id1': player_chat1,
@@ -139,10 +143,10 @@ class TestMapVoter:
             }) == (FAKE_CANDIDATE_MAPS[1], 2)
 
         # Case 6: ties are broken by choosing the element first encountered (first voted on) in the candidate maps.
-        player_chat1 = player_chat_class(['2', 'not an int'])
-        player_chat2 = player_chat_class(['yay', '1'])
-        player_chat3 = player_chat_class(['2'])
-        player_chat4 = player_chat_class(['1'])
+        player_chat1 = MockPlayerChat(['2', 'not an int'])
+        player_chat2 = MockPlayerChat(['yay', '1'])
+        player_chat3 = MockPlayerChat(['2'])
+        player_chat4 = MockPlayerChat(['1'])
         assert mapvoter.get_highest_map_vote(
             FAKE_CANDIDATE_MAPS, {
                 'id1': player_chat1,
@@ -380,13 +384,6 @@ class TestMapVoter:
 
     def test_did_enough_players_ask_for_map_vote(self, voter):
         """ Tests for did_enough_players_ask_for_map_vote. """
-        # Some setup class for mocking PlayerChat objects.
-
-        def chat_init(self, messages):
-            self.messages = messages
-        player_chat_class = type('temp_player_chat', (object,), {
-                                 '__init__': chat_init})
-
         # Case 1: if no one asked, then expect False.
         chat = {}
         assert not voter.did_enough_players_ask_for_map_vote(chat)
@@ -394,7 +391,7 @@ class TestMapVoter:
         assert voter.squad_rcon_client.exec_command.call_count == 0
 
         # Case 2: if only one person asks, expect False.
-        chat = {'id1': player_chat_class(['!mapvote'])}
+        chat = {'id1': MockPlayerChat(['!mapvote'])}
         assert not voter.did_enough_players_ask_for_map_vote(chat)
         # Since one person asked, we check that a broadcast message was sent.
         assert voter.squad_rcon_client.exec_command.call_count == 1
@@ -407,7 +404,7 @@ class TestMapVoter:
 
         # Case 3: if not enough players ask (just below the threshold), expect False.
         chat = {
-            f'id{i}': player_chat_class(['!mapvote']) for i in range(
+            f'id{i}': MockPlayerChat(['!mapvote']) for i in range(
                 0, mapvoter.NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD - 1)}
         assert not voter.did_enough_players_ask_for_map_vote(chat)
 
@@ -417,7 +414,7 @@ class TestMapVoter:
 
         # Case 4: if exactly enough players ask, expect True
         chat = {
-            f'id{i}': player_chat_class(['!mapvote']) for i in range(
+            f'id{i}': MockPlayerChat(['!mapvote']) for i in range(
                 0, mapvoter.NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD)}
         assert voter.did_enough_players_ask_for_map_vote(chat)
 
@@ -427,7 +424,7 @@ class TestMapVoter:
 
         # Case 5: if more than enough players ask, expect True
         chat = {
-            f'id{i}': player_chat_class(['!mapvote']) for i in range(
+            f'id{i}': MockPlayerChat(['!mapvote']) for i in range(
                 0, mapvoter.NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD + 1)}
         assert voter.did_enough_players_ask_for_map_vote(chat)
 
@@ -437,7 +434,7 @@ class TestMapVoter:
 
         # Case 6: if some players have duplicate map votes, don't count them.
         chat = {
-            f'id{i}': player_chat_class(['!mapvote', f'{i} some chat', 'another !mapvote'])
+            f'id{i}': MockPlayerChat(['!mapvote', f'{i} some chat', 'another !mapvote'])
             for i in range(0, mapvoter.NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD - 1)}
         # Since the duplicate map votes are not counted, there aren't enough map vote requests.
         assert not voter.did_enough_players_ask_for_map_vote(chat)
@@ -446,7 +443,7 @@ class TestMapVoter:
         # Case 7: when we intentionally don't reset the map vote, the previous map votes count. Another duplicate map
         # vote still does not count.
         # This player asked previously, so adding their map vote request should not be counted.
-        chat = {f'id0': player_chat_class(
+        chat = {f'id0': MockPlayerChat(
             ['I have decided vote twice', '!mapvote'])}
         assert not voter.did_enough_players_ask_for_map_vote(chat)
         # Also check that no broadcast is sent for a duplicate map vote request.
@@ -456,7 +453,7 @@ class TestMapVoter:
         # makes it return True now.
         # This player never asked previously, so adding their map vote request means there are enough players now.
         new_player_number = mapvoter.NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD + 1
-        chat = {f'id{new_player_number}': player_chat_class(
+        chat = {f'id{new_player_number}': MockPlayerChat(
             ['I have decided to add my vote', '!mapvote'])}
         assert voter.did_enough_players_ask_for_map_vote(chat)
         # Despite the new map vote request, no broadcast is sent since the map vote has enough asks.
@@ -469,25 +466,17 @@ class TestMapVoter:
         # Case 9: we test with a mixture of different map vote commands.
         for i in range(0, mapvoter.NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD + 1):
             command = random.choice(mapvoter.MAP_VOTE_COMMANDS)
-            chat.update({f'id{i}': player_chat_class([command, 'random banter'])})
+            chat.update({f'id{i}': MockPlayerChat([command, 'random banter'])})
         assert voter.did_enough_players_ask_for_map_vote(chat)
 
         # Case 10: case-insensitivity check for incoming chat commands
         chat = {
-            f'id{i}': player_chat_class(['!mApvOte']) for i in range(
+            f'id{i}': MockPlayerChat(['!mApvOte']) for i in range(
                 0, mapvoter.NUM_PLAYERS_REQUESTING_MAP_VOTE_THRESHOLD + 1)}
         assert voter.did_enough_players_ask_for_map_vote(chat)
 
     def test_did_one_clan_member_ask_for_map_vote(self, voter):
         """ Tests for did_one_clan_member_ask_for_map_vote. """
-        # Some setup class for mocking PlayerChat objects.
-
-        def chat_init(self, player_name, messages):
-            self.player_name = player_name
-            self.messages = messages
-        player_chat_class = type('temp_player_chat', (object,), {
-                                 '__init__': chat_init})
-
         CLAN_TAG = mapvoter.CLAN_TAG
 
         # Case 1: no one sends any chat at all.
@@ -495,44 +484,116 @@ class TestMapVoter:
         assert not voter.did_one_clan_member_ask_for_map_vote(chat)
 
         # Case 2: no one with a clan tag posts any chat.
-        chat = {'id1': player_chat_class(
-            'rando duder', ['hello friends!']), 'id2': player_chat_class('dudette', ['hai there'])}
+        chat = {'id1': MockPlayerChat(['hello friends!'], player_name='rando duder'),
+                'id2': MockPlayerChat(['hai there'], player_name='dudette')}
         assert not voter.did_one_clan_member_ask_for_map_vote(chat)
 
         # Case 3: some clan members post chat but not a mapvote.
         chat = {
-            'id1': player_chat_class('rando duder', ['hello friends!']),
-            'id2': player_chat_class(f'{CLAN_TAG} dudette', ['hai there'])}
+            'id1': MockPlayerChat(['hello friends!'], player_name='rando duder'),
+            'id2': MockPlayerChat(['hai there'], player_name=f'{CLAN_TAG} dudette')}
         assert not voter.did_one_clan_member_ask_for_map_vote(chat)
 
         # Case 4: a non-clan member requests a map vote.
         chat = {
-            'id1': player_chat_class('rando duder', ['!mapvote']),
-            'id2': player_chat_class(f'{CLAN_TAG} dudette', ['your vote does not matter'])}
+            'id1': MockPlayerChat(['!mapvote'], player_name='rando duder'),
+            'id2': MockPlayerChat(['your vote does not matter'], player_name=f'{CLAN_TAG} dudette')}
         assert not voter.did_one_clan_member_ask_for_map_vote(chat)
 
         # Case 5: one clan member requests a map vote (that's enough to make it return True).
         chat = {
-            'id1': player_chat_class('rando duder', ['hello friends!']),
-            'id2': player_chat_class(f'{CLAN_TAG} dudette', ['hai there', 'ok fine !mapvote since you said please'])}
+            'id1': MockPlayerChat(['hello friends!'], player_name='rando duder'),
+            'id2': MockPlayerChat(['hai there', 'ok fine !mapvote since you said please'],
+                                  player_name=f'{CLAN_TAG} dudette')}
         assert voter.did_one_clan_member_ask_for_map_vote(chat)
 
         # NOTE(bsubei): we also test for missing space between clan tag and name.
         # Case 6: many clan members request a map vote.
         chat = {
-            'id1': player_chat_class(f'{CLAN_TAG}duder', ['!mapvote yay']),
-            'id2': player_chat_class(f'{CLAN_TAG} dudette', ['hai there', 'ok fine !mapvote since you said please'])}
+            'id1': MockPlayerChat(['!mapvote yay'], player_name=f'{CLAN_TAG}duder'),
+            'id2': MockPlayerChat(['hai there', 'ok fine !mapvote since you said please'],
+                                  player_name=f'{CLAN_TAG} dudette')}
         assert voter.did_one_clan_member_ask_for_map_vote(chat)
 
         # Case 7: a clan member asks for a map vote (chosen from the list of map vote commands).
         command = random.choice(mapvoter.MAP_VOTE_COMMANDS)
         chat = {
-            'id1': player_chat_class('rando duder', ['hello friends!']),
-            'id2': player_chat_class(f'{CLAN_TAG} dudette', ['hai there', f'ok fine {command} since you said please'])}
+            'id1': MockPlayerChat(['hello friends!'], player_name='rando duder'),
+            'id2': MockPlayerChat(['hai there', f'ok fine {command} since you said please'],
+                                  player_name=f'{CLAN_TAG} dudette')}
         assert voter.did_one_clan_member_ask_for_map_vote(chat)
 
         # Case 8: case-insensitivity check for incoming chat commands
         chat = {
-            'id1': player_chat_class(f'{CLAN_TAG}duder', ['!mApvOtE yay']),
-            'id2': player_chat_class(f'{CLAN_TAG} dudette', ['hai there', 'ok fine !maPvOte since you said please'])}
+            'id1': MockPlayerChat(['!mApvOtE yay'], player_name=f'{CLAN_TAG}duder'),
+            'id2': MockPlayerChat(['hai there', 'ok fine !maPvOte since you said please'],
+                                  player_name=f'{CLAN_TAG} dudette')}
         assert voter.did_one_clan_member_ask_for_map_vote(chat)
+
+    def test_run_once(self, voter):
+        """ Tests the run_once function, which is how the mapvoter is accessed from the rcon bot. """
+
+        CURRENT_MAP = 'some fake map'
+        NEXT_MAP = 'this is the next fake map'
+        NO_VOTE_PLAYER_CHAT = {'id1': MockPlayerChat(f'rando1', ['BTR by that tree!'])}
+        HAS_VOTE_PLAYER_CHAT = {'id1': MockPlayerChat(f'[FP]rando1', ['!mApvOtE yay'])}
+        CONFIG_FILEPATH = 'some config filepath'
+        MAP_LAYERS_URL = 'some fake layers url'
+        MOCK_MAP_LAYERS = ['this is', 'some', 'mock', 'layers', 'this last one should never appear']
+
+        # Case 1: expect errors when some kwargs are missing.
+        # Mock everything inside of the function that reaches outside.
+        with mock.patch('squad_map_randomizer.get_json_layers'), (
+            mock.patch('squad_map_randomizer.parse_config')), (
+            mock.patch.object(voter.squad_rcon_client, 'exec_command')) as mock_exec_command, (
+            mock.patch.object(voter, 'start_map_vote')) as mock_start_map_vote, (
+                mock.patch('mapvoter.mapvoter.get_map_candidates')) as mock_get_candidates:
+
+            # Fails if all kwargs are missing.
+            kwargs = {}
+            with pytest.raises(KeyError):
+                voter.run_once(CURRENT_MAP, NEXT_MAP, NO_VOTE_PLAYER_CHAT, **kwargs)
+            # Fails since some kwargs are missing.
+            kwargs.update({'config_filepath': CONFIG_FILEPATH})
+            with pytest.raises(KeyError):
+                voter.run_once(CURRENT_MAP, NEXT_MAP, NO_VOTE_PLAYER_CHAT, **kwargs)
+            # No longer fails when all kwargs included.
+            kwargs.update({'map_layers_url': MAP_LAYERS_URL})
+            voter.run_once(CURRENT_MAP, NEXT_MAP, NO_VOTE_PLAYER_CHAT, **kwargs)
+
+        # Case 2: Run normally where current and next map are the same.
+        with mock.patch('squad_map_randomizer.get_json_layers'), (
+            mock.patch('squad_map_randomizer.parse_config')), (
+            mock.patch.object(voter.squad_rcon_client, 'exec_command')) as mock_exec_command, (
+            mock.patch.object(voter, 'start_map_vote')) as mock_start_map_vote, (
+                mock.patch('mapvoter.mapvoter.get_map_candidates')) as mock_get_candidates:
+            mock_get_candidates.return_value = MOCK_MAP_LAYERS
+
+            # Make sure the last candidate is not chosen (the redo option).
+            voter.run_once(CURRENT_MAP, CURRENT_MAP, NO_VOTE_PLAYER_CHAT, **kwargs)
+            assert mock_exec_command.call_count == 1
+            assert any(layer in mock_exec_command.call_args_list[0][0][0] for layer in MOCK_MAP_LAYERS[:-1])
+            assert MOCK_MAP_LAYERS[-1] not in mock_exec_command.call_args_list[0][0][0]
+
+        # Case 3: Run normally where current and next map are different but no mapvote is given (nothing happens).
+        with mock.patch('squad_map_randomizer.get_json_layers'), (
+            mock.patch('squad_map_randomizer.parse_config')), (
+            mock.patch.object(voter.squad_rcon_client, 'exec_command')) as mock_exec_command, (
+            mock.patch.object(voter, 'start_map_vote')) as mock_start_map_vote, (
+                mock.patch('mapvoter.mapvoter.get_map_candidates')) as mock_get_candidates:
+
+            voter.run_once(CURRENT_MAP, NEXT_MAP, NO_VOTE_PLAYER_CHAT, **kwargs)
+            assert mock_exec_command.call_count == 0
+            assert mock_start_map_vote.call_count == 0
+
+        # Case 4: Run normally where a mapvote is given, and a map vote is started.
+        with mock.patch('squad_map_randomizer.get_json_layers'), (
+            mock.patch('squad_map_randomizer.parse_config')), (
+            mock.patch.object(voter.squad_rcon_client, 'exec_command')) as mock_exec_command, (
+            mock.patch.object(voter, 'start_map_vote')) as mock_start_map_vote, (
+            mock.patch('mapvoter.mapvoter.get_map_candidates')) as mock_get_candidates, (
+                mock.patch.object(voter, 'should_start_map_vote')) as mock_should_start:
+            mock_should_start.return_value = True
+
+            voter.run_once(CURRENT_MAP, NEXT_MAP, HAS_VOTE_PLAYER_CHAT, **kwargs)
+            assert mock_start_map_vote.call_count == 1
