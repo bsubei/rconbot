@@ -19,10 +19,9 @@ See [the official website](https://joinsquad.com/) for information on Squad.
 - [ ] in-game chat mortar calculator. Player types origin and target coordinates in team chat, and gets the bearing and angle as an admin warning (only they can see it).
 
 # Map Voter current features:
-- Players with the specified clan tag can start a map vote at any time by typing a valid command in chat (e.g. `!mapvote`).
+- Players with the specified clan tag can start a map vote *if the cooldown is over* by typing a valid command in chat (e.g. `!mapvote`).
 - Players without the clan tag can *ask* for a map vote by typing in the same command. When enough players ask for it (default 5), a map vote is started *if the cooldown is over*.
-- If the map rotation file is provided, the candidate maps are the next four maps in the rotation.
-- Otherwise, a random set of maps is chosen based on the [squad\_map\_randomizer](https://github.com/bsubei/squad_map_randomizer) tool.
+- A config file specifying how to choose the maps is expected as input. See [squad\_map\_randomizer](https://github.com/bsubei/squad_map_randomizer) for usage and examples.
 
 # Resources needed to develop this.
 - The RCON protocol used by Squad servers is based off of [Valve's RCON protocol](https://developer.valvesoftware.com/wiki/Source_RCON_Protocol), with minor modifications (for handling Unicode and multi-packet messages). See [SQUAD RCON](https://discord.gg/8tpbYZK) Discord group for more support.
@@ -33,7 +32,8 @@ I used Python 3.6.8 to write this, and used pytest (the python3 version) to run 
 in the root directory to run the unit tests. Auto-linting is done using `autopep8 --in-place <filename>`.
 
 # Installation
-Run `pip3 install -r requirements.txt` to install the packages locally into the `src/` folder, then you can run the mapvoter script. Example usage: `python3 mapvoter/mapvoter.py --rcon-address '123.456.789.123' --rcon-port 12345 --rcon-password myfancypass --voting-delay 900 --voting-duration 60 --verbose`.
+Run `pip3 install -r requirements.txt` to install the packages locally into the `src/` folder, then you can run the mapvoter script. Example usage: `python3 rconbot.py --rcon-address '192.168.1.77' --rcon-port 21114 --rcon-password randompass --voting-cooldown 300 --voting-duration 20 --verbose -c src/squad-map-randomizer/configs/examples/any_three_maps.yml`
+NOTE: you can run this script on a different machine than the Squad server as long as the IP address and port you give it are visible.
 
 # License
 The license is GPLv3. Please see the LICENSE file.
