@@ -51,7 +51,8 @@ CLAN_TAG = '[FP]'
 MAP_VOTE_COMMANDS = ['!mapvote', '!votemap', '!rtv']
 
 # The text to display for the last option in the map vote (runs the map vote again with random candidates).
-REDO_VOTE_OPTION = 'None of the above (do nothing)'
+REDO_VOTE_OPTION = 'None of the above'
+REDO_VOTE_DESCRIPTION = 'do nothing'
 
 
 def has_map_vote_command(message):
@@ -70,7 +71,7 @@ def get_rotation_from_filepath(map_rotation_filepath):
         return list(filter(None, [line.strip('\n') for line in f.readlines()]))
 
 
-def get_map_candidates(config, all_map_layers):
+def get_map_candidates_and_descriptions(config, all_map_layers):
     """
     Return the candidate map layers for a vote based on the filters provided in the config and the available map layers.
 
@@ -79,13 +80,15 @@ def get_map_candidates(config, all_map_layers):
     :return: list(str) The list of map candidates. The last choice is always a "redo" option.
     """
     # Otherwise, just use random maps as candidates (and a redo option).
-    rotation = squad_map_randomizer.get_map_rotation(config, all_map_layers)
-    return squad_map_randomizer.get_layers(rotation) + [REDO_VOTE_OPTION]
+    rotation, descriptions = squad_map_randomizer.get_map_rotation_and_descriptions(config, all_map_layers)
+    return (squad_map_randomizer.get_layers(rotation) + [REDO_VOTE_OPTION], descriptions + [[REDO_VOTE_DESCRIPTION]])
 
 
-def format_candidate_maps(candidate_maps):
+def format_candidate_maps(candidate_maps, descriptions):
     """ Returns a formatted string of all the candidate maps to be displayed to players in chat. """
-    return '\n'.join([f'{index}) {candidate}' for index, candidate in enumerate(candidate_maps)])
+    return '\n'.join([
+            '{}) {} ({})'.format(index, candidate, ', '.join(description)) if description else f'{index}) {candidate}'
+            for index, (candidate, description) in enumerate(zip(candidate_maps, descriptions))])
 
 
 def get_highest_map_vote(candidate_maps, player_messages):
@@ -209,13 +212,13 @@ class MapVoter:
         # We're done listening. Send a broadcast that voting is done (so it flushes all the chat messages).
         self.squad_rcon_client.exec_command(f'AdminBroadcast Voting is over!')
 
-    def start_map_vote(self, candidate_maps):
+    def start_map_vote(self, candidate_maps, descriptions):
         """
         Starts a map vote by sending candidate maps message and listening to chat for a specified duration. Blocks while
         the map vote is being done.
         """
         # Format the given list of map candidates.
-        candidate_maps_formatted = format_candidate_maps(candidate_maps)
+        candidate_maps_formatted = format_candidate_maps(candidate_maps, descriptions)
         logger.info(f'Starting a new map vote! Candidate maps:\n{candidate_maps_formatted}')
 
         # Send map vote message (includes list of candidates).
@@ -327,8 +330,9 @@ class MapVoter:
         # NOTE(bsubei): the vote could force two consecutive maps to be the same. This will prevent that from
         # happening. We skip the last candidate (always a redo option).
         if current_map == next_map:
-            random_map = random.choice(
-                get_map_candidates(config, all_map_layers)[:-1])
+            candidates, _ = get_map_candidates_and_descriptions(config, all_map_layers)
+            candidates = candidates[:-1]
+            random_map = random.choice(candidates)
             logger.warning(f'Next map is same as current map! Setting to a random map: {random_map}')
             self.squad_rcon_client.exec_command(f'AdminSetNextMap "{random_map}"')
 
@@ -337,4 +341,5 @@ class MapVoter:
             # In the special case that a redo is requested, omit the rotation filepath so we pick random maps. Also
             # reset the redo flag.
             self.redo_requested = False
-            self.start_map_vote(get_map_candidates(config, all_map_layers))
+            candidates, descriptions = get_map_candidates_and_descriptions(config, all_map_layers)
+            self.start_map_vote(candidates, descriptions)

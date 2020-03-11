@@ -26,6 +26,7 @@ FAKE_ROTATION_FILEPATH = 'some ignored fake filepath'
 FAKE_ROTATION = ['not a real', 'rotation', 'list']
 NUMBER_OF_CANDIDATES = 2
 FAKE_CANDIDATE_MAPS = ['vote me', 'no me pls', 'best map EU']
+FAKE_DESCRIPTIONS = [['one'], ['two', 'fake'], ['three', 'fake', 'descriptions']]
 FAKE_VOTE_DURATION_S = 42.0
 FAKE_VOTE_COOLDOWN_S = 77.0
 TIME_NOW = 69.0
@@ -62,31 +63,33 @@ class TestMapVoter:
         # Read it back in with get_rotation_from_filepath. We expect them to be the same.
         assert mapvoter.get_rotation_from_filepath(filepath) == FAKE_ROTATION
 
-    def test_get_map_candidates(self):
-        """ Tests the get_map_candidates function. """
+    def test_get_map_candidates_and_descriptions(self):
+        """ Tests the get_map_candidates_and_descriptions function. """
         CONFIG = 'mock config'
         ALL_LAYERS = 'mock layers'
         RETURNED_LAYERS = ['1', '2', '3']
-        with mock.patch('squad_map_randomizer.get_map_rotation') as _:
+        with mock.patch('squad_map_randomizer.get_map_rotation_and_descriptions') as mock_get_rotation_and_descriptions:
             with mock.patch('squad_map_randomizer.get_layers') as mock_get_layers:
+                mock_get_rotation_and_descriptions.return_value = (['fake'], ['bla'])
                 mock_get_layers.return_value = RETURNED_LAYERS
-                assert mapvoter.get_map_candidates(CONFIG, ALL_LAYERS) == RETURNED_LAYERS + [mapvoter.REDO_VOTE_OPTION]
+                candidates, descriptions = mapvoter.get_map_candidates_and_descriptions(CONFIG, ALL_LAYERS)
+                assert candidates == RETURNED_LAYERS + [mapvoter.REDO_VOTE_OPTION]
 
     def test_format_candidate_maps(self):
         """ Tests the format_candidate_maps function. """
         # Case 1: test multiple maps.
         EXPECTED_CANDIDATE_MAPS_STRING = (
-            '0) vote me\n'
-            '1) no me pls\n'
-            '2) best map EU')
+            '0) vote me (one)\n'
+            '1) no me pls (two, fake)\n'
+            '2) best map EU (three, fake, descriptions)')
         assert mapvoter.format_candidate_maps(
-            FAKE_CANDIDATE_MAPS) == EXPECTED_CANDIDATE_MAPS_STRING
+            FAKE_CANDIDATE_MAPS, FAKE_DESCRIPTIONS) == EXPECTED_CANDIDATE_MAPS_STRING
 
         # Case 2: test a single map.
-        assert mapvoter.format_candidate_maps(['a map']) == '0) a map'
+        assert mapvoter.format_candidate_maps(['a map'], [[]]) == '0) a map'
 
         # Case 3: test on an empty list of maps.
-        assert mapvoter.format_candidate_maps([]) == ''
+        assert mapvoter.format_candidate_maps([], []) == ''
 
     def test_get_highest_map_vote(self):
         """ Tests for get_highest_map_vote. """
@@ -289,16 +292,16 @@ class TestMapVoter:
         """ Tests for start_map_vote when it fails. """
         # Start a map vote that fails (no reply from users).
         with mock.patch('mapvoter.mapvoter.time.sleep'):
-            voter.start_map_vote(FAKE_CANDIDATE_MAPS)
+            voter.start_map_vote(FAKE_CANDIDATE_MAPS, FAKE_DESCRIPTIONS)
 
         # Check that the start vote message is sent using the squad_rcon_client.
         assert (mapvoter.START_VOTE_MESSAGE_TEMPLATE.format(
-            candidate_maps=mapvoter.format_candidate_maps(FAKE_CANDIDATE_MAPS)) in
+            candidate_maps=mapvoter.format_candidate_maps(FAKE_CANDIDATE_MAPS, FAKE_DESCRIPTIONS)) in
             voter.squad_rcon_client.exec_command.call_args_list[0][0][0])
 
         # Check that the halftime and finish messages are sent.
         assert (mapvoter.START_VOTE_MESSAGE_TEMPLATE.format(
-            candidate_maps=mapvoter.format_candidate_maps(FAKE_CANDIDATE_MAPS)) in
+            candidate_maps=mapvoter.format_candidate_maps(FAKE_CANDIDATE_MAPS, FAKE_DESCRIPTIONS)) in
             voter.squad_rcon_client.exec_command.call_args_list[1][0][0])
         assert (voter.squad_rcon_client.exec_command.call_args_list[2][0][0] ==
                 'AdminBroadcast Voting is over!')
@@ -321,16 +324,16 @@ class TestMapVoter:
                 mock.patch('mapvoter.mapvoter.time.sleep')):
             fake_get_highest_map_vote.return_value = (
                 PREDETERMINED_WINNER_MAP, PREDETERMINED_WINNER_COUNT)
-            voter.start_map_vote(FAKE_CANDIDATE_MAPS)
+            voter.start_map_vote(FAKE_CANDIDATE_MAPS, FAKE_DESCRIPTIONS)
 
         # Check that the start vote message is sent using the squad_rcon_client.
         assert (mapvoter.START_VOTE_MESSAGE_TEMPLATE.format(
-            candidate_maps=mapvoter.format_candidate_maps(FAKE_CANDIDATE_MAPS)) in
+            candidate_maps=mapvoter.format_candidate_maps(FAKE_CANDIDATE_MAPS, FAKE_DESCRIPTIONS)) in
             voter.squad_rcon_client.exec_command.call_args_list[0][0][0])
 
         # Check that the halftime and finish messages are sent.
         assert (mapvoter.START_VOTE_MESSAGE_TEMPLATE.format(
-            candidate_maps=mapvoter.format_candidate_maps(FAKE_CANDIDATE_MAPS)) in
+            candidate_maps=mapvoter.format_candidate_maps(FAKE_CANDIDATE_MAPS, FAKE_DESCRIPTIONS)) in
             voter.squad_rcon_client.exec_command.call_args_list[1][0][0])
         assert (voter.squad_rcon_client.exec_command.call_args_list[2][0][0] ==
                 'AdminBroadcast Voting is over!')
@@ -356,16 +359,16 @@ class TestMapVoter:
                 mock.patch('mapvoter.mapvoter.time.sleep')):
             fake_get_highest_map_vote.return_value = (
                 PREDETERMINED_WINNER_MAP, PREDETERMINED_WINNER_COUNT)
-            voter.start_map_vote(FAKE_CANDIDATE_MAPS)
+            voter.start_map_vote(FAKE_CANDIDATE_MAPS, FAKE_DESCRIPTIONS)
 
         # Check that the start vote message is sent using the squad_rcon_client.
         assert (mapvoter.START_VOTE_MESSAGE_TEMPLATE.format(
-            candidate_maps=mapvoter.format_candidate_maps(FAKE_CANDIDATE_MAPS)) in
+            candidate_maps=mapvoter.format_candidate_maps(FAKE_CANDIDATE_MAPS, FAKE_DESCRIPTIONS)) in
             voter.squad_rcon_client.exec_command.call_args_list[0][0][0])
 
         # Check that the halftime and finish messages are sent.
         assert (mapvoter.START_VOTE_MESSAGE_TEMPLATE.format(
-            candidate_maps=mapvoter.format_candidate_maps(FAKE_CANDIDATE_MAPS)) in
+            candidate_maps=mapvoter.format_candidate_maps(FAKE_CANDIDATE_MAPS, FAKE_DESCRIPTIONS)) in
             voter.squad_rcon_client.exec_command.call_args_list[1][0][0])
         assert (voter.squad_rcon_client.exec_command.call_args_list[2][0][0] ==
                 'AdminBroadcast Voting is over!')
@@ -547,7 +550,7 @@ class TestMapVoter:
             mock.patch('squad_map_randomizer.parse_config')), (
             mock.patch.object(voter.squad_rcon_client, 'exec_command')) as mock_exec_command, (
             mock.patch.object(voter, 'start_map_vote')) as mock_start_map_vote, (
-                mock.patch('mapvoter.mapvoter.get_map_candidates')) as mock_get_candidates:
+                mock.patch('mapvoter.mapvoter.get_map_candidates_and_descriptions')) as mock_get_candidates:
 
             # Fails if all kwargs are missing.
             kwargs = {}
@@ -566,8 +569,8 @@ class TestMapVoter:
             mock.patch('squad_map_randomizer.parse_config')), (
             mock.patch.object(voter.squad_rcon_client, 'exec_command')) as mock_exec_command, (
             mock.patch.object(voter, 'start_map_vote')) as mock_start_map_vote, (
-                mock.patch('mapvoter.mapvoter.get_map_candidates')) as mock_get_candidates:
-            mock_get_candidates.return_value = MOCK_MAP_LAYERS
+                mock.patch('mapvoter.mapvoter.get_map_candidates_and_descriptions')) as mock_get_candidates:
+            mock_get_candidates.return_value = (MOCK_MAP_LAYERS, [])
 
             # Make sure the last candidate is not chosen (the redo option).
             voter.run_once(CURRENT_MAP, CURRENT_MAP, NO_VOTE_PLAYER_CHAT, **kwargs)
@@ -580,7 +583,7 @@ class TestMapVoter:
             mock.patch('squad_map_randomizer.parse_config')), (
             mock.patch.object(voter.squad_rcon_client, 'exec_command')) as mock_exec_command, (
             mock.patch.object(voter, 'start_map_vote')) as mock_start_map_vote, (
-                mock.patch('mapvoter.mapvoter.get_map_candidates')) as mock_get_candidates:
+                mock.patch('mapvoter.mapvoter.get_map_candidates_and_descriptions')) as mock_get_candidates:
 
             voter.run_once(CURRENT_MAP, NEXT_MAP, NO_VOTE_PLAYER_CHAT, **kwargs)
             assert mock_exec_command.call_count == 0
@@ -591,9 +594,10 @@ class TestMapVoter:
             mock.patch('squad_map_randomizer.parse_config')), (
             mock.patch.object(voter.squad_rcon_client, 'exec_command')) as mock_exec_command, (
             mock.patch.object(voter, 'start_map_vote')) as mock_start_map_vote, (
-            mock.patch('mapvoter.mapvoter.get_map_candidates')) as mock_get_candidates, (
+            mock.patch('mapvoter.mapvoter.get_map_candidates_and_descriptions')) as mock_get_candidates, (
                 mock.patch.object(voter, 'should_start_map_vote')) as mock_should_start:
             mock_should_start.return_value = True
+            mock_get_candidates.return_value = (MOCK_MAP_LAYERS, [])
 
             voter.run_once(CURRENT_MAP, NEXT_MAP, HAS_VOTE_PLAYER_CHAT, **kwargs)
             assert mock_start_map_vote.call_count == 1
